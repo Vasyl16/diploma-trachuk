@@ -1,0 +1,126 @@
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.UsersController = void 0;
+const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
+const current_user_decorator_1 = require("../common/decorators/current-user.decorator");
+const s3_storage_service_1 = require("../storage/s3-storage.service");
+const create_user_dto_1 = require("./dto/create-user.dto");
+const users_service_1 = require("./users.service");
+let UsersController = class UsersController {
+    usersService;
+    s3Storage;
+    constructor(usersService, s3Storage) {
+        this.usersService = usersService;
+        this.s3Storage = s3Storage;
+    }
+    me(user) {
+        if (!user) {
+            throw new common_1.UnauthorizedException('Authentication required. Send a valid Clerk session token (Authorization: Bearer or __session cookie).');
+        }
+        return this.usersService.findById(user.id);
+    }
+    async uploadAvatar(user, file) {
+        if (!user) {
+            throw new common_1.UnauthorizedException('Authentication required. Send a valid Clerk session token (Authorization: Bearer or __session cookie).');
+        }
+        if (!file?.buffer?.length) {
+            throw new common_1.BadRequestException('Missing image file (field name: file)');
+        }
+        try {
+            const avatarUrl = await this.s3Storage.uploadAvatar(file.buffer, file.mimetype, user.id);
+            return this.usersService.updateAvatar(user.id, avatarUrl);
+        }
+        catch (e) {
+            if (e instanceof common_1.BadRequestException) {
+                throw e;
+            }
+            const msg = e instanceof Error ? e.message : 'Upload failed';
+            throw new common_1.BadRequestException(msg);
+        }
+    }
+    searchPeople(q) {
+        return this.usersService.searchByName(q ?? '');
+    }
+    findAll() {
+        return this.usersService.findAll();
+    }
+    publicProfile(id) {
+        return this.usersService.findPublicById(id);
+    }
+    findOne(id) {
+        return this.usersService.findById(id);
+    }
+    create(body) {
+        return this.usersService.create(body);
+    }
+};
+exports.UsersController = UsersController;
+__decorate([
+    (0, common_1.Get)('me'),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], UsersController.prototype, "me", null);
+__decorate([
+    (0, common_1.Post)('avatar'),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', { limits: { fileSize: 5 * 1024 * 1024 } })),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __param(1, (0, common_1.UploadedFile)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "uploadAvatar", null);
+__decorate([
+    (0, common_1.Get)('search'),
+    __param(0, (0, common_1.Query)('q')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], UsersController.prototype, "searchPeople", null);
+__decorate([
+    (0, common_1.Get)(),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], UsersController.prototype, "findAll", null);
+__decorate([
+    (0, common_1.Get)('public/:id'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], UsersController.prototype, "publicProfile", null);
+__decorate([
+    (0, common_1.Get)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], UsersController.prototype, "findOne", null);
+__decorate([
+    (0, common_1.Post)(),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [create_user_dto_1.CreateUserDto]),
+    __metadata("design:returntype", void 0)
+], UsersController.prototype, "create", null);
+exports.UsersController = UsersController = __decorate([
+    (0, common_1.Controller)('users'),
+    __metadata("design:paramtypes", [users_service_1.UsersService,
+        s3_storage_service_1.S3StorageService])
+], UsersController);
+//# sourceMappingURL=users.controller.js.map
