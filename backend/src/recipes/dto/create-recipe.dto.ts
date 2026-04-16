@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import {
   ArrayNotEmpty,
   IsArray,
@@ -22,8 +23,11 @@ export class CreateRecipeDto {
   @IsString({ each: true })
   steps: string[];
 
+  /** Defaults to false (your own recipe). Set true only if ingesting AI output elsewhere. */
+  @IsOptional()
   @IsBoolean()
-  isAI: boolean;
+  @Transform(({ value }) => value === true || value === 'true')
+  isAI?: boolean;
 
   @IsOptional()
   @IsString()

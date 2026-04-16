@@ -3,12 +3,14 @@
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bookmark, Heart } from "lucide-react";
+import { Bookmark, ChefHat, Heart } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { PageHeader, PageShell } from "@/components/layout";
+import { RecipeCookingMode } from "@/components/recipe/recipe-cooking-mode";
 import { RecipeHeroMedia } from "@/components/recipe/recipe-media";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { parseApiErrorMessage } from "@/lib/api-error";
 import { getApiBaseUrl } from "@/lib/api-config";
 import { fetchWithAuth } from "@/lib/api-fetch";
@@ -66,6 +68,7 @@ export function RecipeDetail({ recipeId }: { recipeId: string }) {
   const [togglingLike, setTogglingLike] = useState(false);
   const [togglingSave, setTogglingSave] = useState(false);
   const [myDbUserId, setMyDbUserId] = useState<string | null>(null);
+  const [cookingOpen, setCookingOpen] = useState(false);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) {
@@ -296,6 +299,25 @@ export function RecipeDetail({ recipeId }: { recipeId: string }) {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            {myDbUserId && recipe.userId === myDbUserId ? (
+              <Link
+                href={`/recipes/${recipe.id}/edit`}
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+              >
+                Edit recipe
+              </Link>
+            ) : null}
+            <button
+              type="button"
+              className={cn(
+                buttonVariants({ variant: "default", size: "sm" }),
+                "gap-1.5",
+              )}
+              onClick={() => setCookingOpen(true)}
+            >
+              <ChefHat className="h-4 w-4" />
+              Cook
+            </button>
             <button
               type="button"
               className={cn(
@@ -363,6 +385,14 @@ export function RecipeDetail({ recipeId }: { recipeId: string }) {
           )}
         </ol>
       </section>
+
+      <RecipeCookingMode
+        open={cookingOpen}
+        onClose={() => setCookingOpen(false)}
+        recipeTitle={recipe.title}
+        ingredients={recipe.ingredients}
+        steps={recipe.steps}
+      />
     </PageShell>
   );
 }

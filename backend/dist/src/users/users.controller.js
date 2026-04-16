@@ -16,15 +16,15 @@ exports.UsersController = void 0;
 const common_1 = require("@nestjs/common");
 const platform_express_1 = require("@nestjs/platform-express");
 const current_user_decorator_1 = require("../common/decorators/current-user.decorator");
-const s3_storage_service_1 = require("../storage/s3-storage.service");
+const storage_service_1 = require("../storage/storage.service");
 const create_user_dto_1 = require("./dto/create-user.dto");
 const users_service_1 = require("./users.service");
 let UsersController = class UsersController {
     usersService;
-    s3Storage;
-    constructor(usersService, s3Storage) {
+    storage;
+    constructor(usersService, storage) {
         this.usersService = usersService;
-        this.s3Storage = s3Storage;
+        this.storage = storage;
     }
     me(user) {
         if (!user) {
@@ -40,7 +40,10 @@ let UsersController = class UsersController {
             throw new common_1.BadRequestException('Missing image file (field name: file)');
         }
         try {
-            const avatarUrl = await this.s3Storage.uploadAvatar(file.buffer, file.mimetype, user.id);
+            if (user.avatarUrl) {
+                await this.storage.deleteFile(user.avatarUrl);
+            }
+            const avatarUrl = await this.storage.uploadAvatar(file.buffer, file.mimetype, user.id);
             return this.usersService.updateAvatar(user.id, avatarUrl);
         }
         catch (e) {
@@ -121,6 +124,6 @@ __decorate([
 exports.UsersController = UsersController = __decorate([
     (0, common_1.Controller)('users'),
     __metadata("design:paramtypes", [users_service_1.UsersService,
-        s3_storage_service_1.S3StorageService])
+        storage_service_1.StorageService])
 ], UsersController);
 //# sourceMappingURL=users.controller.js.map

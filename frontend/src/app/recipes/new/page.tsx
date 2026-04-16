@@ -161,7 +161,7 @@ function NewAiRecipeInner() {
           </div>
         }
         title="Generate a recipe"
-        description="Add ingredients and hints — your API calls the model and returns a structured recipe."
+        description="Add ingredients and hints — the API returns structured recipe JSON. Optional dish images are generated on the server (no extra login)."
       />
 
       {showPremiumSuccess ? (

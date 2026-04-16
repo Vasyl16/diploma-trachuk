@@ -15,7 +15,7 @@ export class AiGenerateRecipeDto {
   @IsString()
   complexity?: string;
 
-  /** When true, generate a dish image (DALL·E) and store it; requires OpenAI Images API access. */
+  /** When true, the API also generates a dish image after the recipe is created. */
   @IsOptional()
   @IsBoolean()
   @Transform(({ value }) => {

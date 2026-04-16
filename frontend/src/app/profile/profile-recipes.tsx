@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { PageHeader, PageShell } from "@/components/layout";
+import { RecipeAiBadges } from "@/components/recipe/recipe-ai-badges";
 import { RecipeCardMedia } from "@/components/recipe/recipe-media";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button-variants";
@@ -401,12 +402,17 @@ export function ProfileRecipes() {
           ) : recipes && recipes.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-muted/30 px-6 py-12 text-center">
               <p className="text-muted-foreground">No recipes yet.</p>
-              <Link
-                href="/recipes/new"
-                className={cn(buttonVariants(), "mt-4 inline-flex")}
-              >
-                Generate a recipe
-              </Link>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                <Link href="/recipes/create" className={cn(buttonVariants())}>
+                  Write a recipe
+                </Link>
+                <Link
+                  href="/recipes/new"
+                  className={cn(buttonVariants({ variant: "outline" }))}
+                >
+                  AI generator
+                </Link>
+              </div>
             </div>
           ) : recipes ? (
             <ul className="grid list-none gap-4 sm:grid-cols-2">
@@ -421,15 +427,18 @@ export function ProfileRecipes() {
                     <CardHeader className="space-y-2">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <CardTitle className="text-lg leading-snug">
-                          {recipe.title}
+                          <Link
+                            href={`/recipes/${recipe.id}`}
+                            className="hover:underline"
+                          >
+                            {recipe.title}
+                          </Link>
                         </CardTitle>
                         <div className="flex flex-wrap items-center gap-1.5">
                           {recipe.isPublished ? (
                             <Badge variant="secondary">Published</Badge>
                           ) : null}
-                          {recipe.isAI ? (
-                            <Badge variant="ai">AI</Badge>
-                          ) : null}
+                          {recipe.isAI ? <RecipeAiBadges /> : null}
                         </div>
                       </div>
                       <CardDescription className="line-clamp-3">
@@ -437,6 +446,22 @@ export function ProfileRecipes() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="mt-auto flex flex-wrap justify-end gap-2 pt-0">
+                      <Link
+                        href={`/recipes/${recipe.id}`}
+                        className={cn(
+                          buttonVariants({ variant: "secondary", size: "sm" }),
+                        )}
+                      >
+                        View
+                      </Link>
+                      <Link
+                        href={`/recipes/${recipe.id}/edit`}
+                        className={cn(
+                          buttonVariants({ variant: "secondary", size: "sm" }),
+                        )}
+                      >
+                        Edit
+                      </Link>
                       {!recipe.isPublished ? (
                         <Button
                           type="button"

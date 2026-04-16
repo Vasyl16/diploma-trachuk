@@ -17,6 +17,8 @@ const common_1 = require("@nestjs/common");
 const current_user_decorator_1 = require("../common/decorators/current-user.decorator");
 const ai_generate_recipe_dto_1 = require("./dto/ai-generate-recipe.dto");
 const create_recipe_dto_1 = require("./dto/create-recipe.dto");
+const update_recipe_dto_1 = require("./dto/update-recipe.dto");
+const upload_dish_image_dto_1 = require("./dto/upload-dish-image.dto");
 const recipes_service_1 = require("./recipes.service");
 let RecipesController = class RecipesController {
     recipesService;
@@ -26,7 +28,7 @@ let RecipesController = class RecipesController {
     feedFacets() {
         return this.recipesService.getPublishedFeedFacets();
     }
-    feed(user, offsetRaw, limitRaw, q, tag, category) {
+    feed(user, offsetRaw, limitRaw, q, tag, category, includeIng, excludeIng) {
         const offset = Math.max(0, parseInt(offsetRaw ?? '0', 10) || 0);
         const limit = Math.min(50, Math.max(1, parseInt(limitRaw ?? '12', 10) || 12));
         return this.recipesService.findPublishedFeed(user?.id, {
@@ -35,6 +37,8 @@ let RecipesController = class RecipesController {
             q,
             tag,
             category,
+            includeIng,
+            excludeIng,
         });
     }
     myRecipes(user) {
@@ -48,6 +52,12 @@ let RecipesController = class RecipesController {
             throw new common_1.UnauthorizedException('Authentication required. Send a valid Clerk session token (Authorization: Bearer or __session cookie).');
         }
         return await this.recipesService.generateAiRecipe(body, user.id);
+    }
+    uploadDishImage(id, user, body) {
+        if (!user) {
+            throw new common_1.UnauthorizedException('Authentication required. Send a valid Clerk session token (Authorization: Bearer or __session cookie).');
+        }
+        return this.recipesService.uploadDishImageFromBase64(id, user.id, body.imageBase64);
     }
     create(user, body) {
         if (!user) {
@@ -66,6 +76,12 @@ let RecipesController = class RecipesController {
             throw new common_1.UnauthorizedException('Authentication required. Send a valid Clerk session token (Authorization: Bearer or __session cookie).');
         }
         return this.recipesService.unpublishForUser(id, user.id);
+    }
+    update(id, user, body) {
+        if (!user) {
+            throw new common_1.UnauthorizedException('Authentication required. Send a valid Clerk session token (Authorization: Bearer or __session cookie).');
+        }
+        return this.recipesService.updateForUser(id, user.id, body);
     }
     like(id, user) {
         if (!user) {
@@ -116,8 +132,10 @@ __decorate([
     __param(3, (0, common_1.Query)('q')),
     __param(4, (0, common_1.Query)('tag')),
     __param(5, (0, common_1.Query)('category')),
+    __param(6, (0, common_1.Query)('includeIng')),
+    __param(7, (0, common_1.Query)('excludeIng')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String, String, String, String, String]),
+    __metadata("design:paramtypes", [Object, String, String, String, String, String, String, String]),
     __metadata("design:returntype", void 0)
 ], RecipesController.prototype, "feed", null);
 __decorate([
@@ -135,6 +153,15 @@ __decorate([
     __metadata("design:paramtypes", [Object, ai_generate_recipe_dto_1.AiGenerateRecipeDto]),
     __metadata("design:returntype", Promise)
 ], RecipesController.prototype, "aiGenerate", null);
+__decorate([
+    (0, common_1.Post)(':id/dish-image'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, upload_dish_image_dto_1.UploadRecipeDishImageDto]),
+    __metadata("design:returntype", void 0)
+], RecipesController.prototype, "uploadDishImage", null);
 __decorate([
     (0, common_1.Post)(),
     __param(0, (0, current_user_decorator_1.CurrentUser)()),
@@ -159,6 +186,15 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", void 0)
 ], RecipesController.prototype, "unpublish", null);
+__decorate([
+    (0, common_1.Patch)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, update_recipe_dto_1.UpdateRecipeDto]),
+    __metadata("design:returntype", void 0)
+], RecipesController.prototype, "update", null);
 __decorate([
     (0, common_1.Post)(':id/like'),
     __param(0, (0, common_1.Param)('id')),

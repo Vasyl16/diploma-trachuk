@@ -12,10 +12,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UsersService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma/prisma.service");
+const storage_service_1 = require("../storage/storage.service");
 let UsersService = class UsersService {
     prisma;
-    constructor(prisma) {
+    storage;
+    constructor(prisma, storage) {
         this.prisma = prisma;
+        this.storage = storage;
     }
     findAll() {
         return this.prisma.user.findMany();
@@ -121,9 +124,17 @@ let UsersService = class UsersService {
         });
     }
     async removeByClerkId(clerkId) {
-        const user = await this.prisma.user.findUnique({ where: { clerkId } });
+        const user = await this.prisma.user.findUnique({
+            where: { clerkId },
+            include: { recipes: { select: { imageUrl: true } } },
+        });
         if (!user)
             return;
+        const urls = [
+            user.avatarUrl,
+            ...user.recipes.map((r) => r.imageUrl),
+        ].filter((u) => Boolean(u));
+        await this.storage.deleteFiles(urls);
         await this.prisma.$transaction([
             this.prisma.recipe.deleteMany({ where: { userId: user.id } }),
             this.prisma.user.delete({ where: { id: user.id } }),
@@ -133,6 +144,7 @@ let UsersService = class UsersService {
 exports.UsersService = UsersService;
 exports.UsersService = UsersService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        storage_service_1.StorageService])
 ], UsersService);
 //# sourceMappingURL=users.service.js.map

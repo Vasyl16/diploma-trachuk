@@ -48,7 +48,13 @@ function normalizeFeedItem(raw: FeedRecipe): FeedRecipe {
 
 function feedQueryString(
   offset: number,
-  opts: { q: string; tag: string; category: string },
+  opts: {
+    q: string;
+    tag: string;
+    category: string;
+    includeIng: string;
+    excludeIng: string;
+  },
 ): string {
   const p = new URLSearchParams();
   p.set("offset", String(offset));
@@ -57,6 +63,8 @@ function feedQueryString(
   if (qt) p.set("q", qt);
   if (opts.tag.trim()) p.set("tag", opts.tag.trim().toLowerCase());
   if (opts.category.trim()) p.set("category", opts.category.trim());
+  if (opts.includeIng.trim()) p.set("includeIng", opts.includeIng.trim());
+  if (opts.excludeIng.trim()) p.set("excludeIng", opts.excludeIng.trim());
   return p.toString();
 }
 
@@ -67,6 +75,8 @@ export function FeedList() {
   const qUrl = searchParams.get("q") ?? "";
   const tagUrl = searchParams.get("tag") ?? "";
   const categoryUrl = searchParams.get("category") ?? "";
+  const includeIngUrl = searchParams.get("includeIng") ?? "";
+  const excludeIngUrl = searchParams.get("excludeIng") ?? "";
 
   const [recipes, setRecipes] = useState<FeedRecipe[] | null>(null);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
@@ -77,6 +87,8 @@ export function FeedList() {
   const [loadingMore, setLoadingMore] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [qInput, setQInput] = useState(qUrl);
+  const [includeIngInput, setIncludeIngInput] = useState(includeIngUrl);
+  const [excludeIngInput, setExcludeIngInput] = useState(excludeIngUrl);
   const [facets, setFacets] = useState<{
     categories: string[];
     tags: string[];
@@ -87,17 +99,45 @@ export function FeedList() {
   }, [qUrl]);
 
   useEffect(() => {
+    setIncludeIngInput(includeIngUrl);
+  }, [includeIngUrl]);
+
+  useEffect(() => {
+    setExcludeIngInput(excludeIngUrl);
+  }, [excludeIngUrl]);
+
+  useEffect(() => {
     const id = setTimeout(() => {
-      const next = qInput.trim();
-      if (next === qUrl.trim()) return;
+      const nextQ = qInput.trim();
+      const nextInc = includeIngInput.trim();
+      const nextExc = excludeIngInput.trim();
+      if (
+        nextQ === qUrl.trim() &&
+        nextInc === includeIngUrl.trim() &&
+        nextExc === excludeIngUrl.trim()
+      ) {
+        return;
+      }
       const p = new URLSearchParams();
-      if (next) p.set("q", next);
+      if (nextQ) p.set("q", nextQ);
       if (tagUrl.trim()) p.set("tag", tagUrl.trim());
       if (categoryUrl.trim()) p.set("category", categoryUrl.trim());
+      if (nextInc) p.set("includeIng", nextInc);
+      if (nextExc) p.set("excludeIng", nextExc);
       router.replace(`/feed?${p.toString()}`);
     }, 380);
     return () => clearTimeout(id);
-  }, [qInput, qUrl, tagUrl, categoryUrl, router]);
+  }, [
+    qInput,
+    includeIngInput,
+    excludeIngInput,
+    qUrl,
+    includeIngUrl,
+    excludeIngUrl,
+    tagUrl,
+    categoryUrl,
+    router,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -144,7 +184,13 @@ export function FeedList() {
   }, [facets]);
 
   function replaceFeedQuery(
-    partial: Partial<{ q: string; tag: string; category: string }>,
+    partial: Partial<{
+      q: string;
+      tag: string;
+      category: string;
+      includeIng: string;
+      excludeIng: string;
+    }>,
   ) {
     const p = new URLSearchParams();
     const qv = (partial.q !== undefined ? partial.q : qUrl).trim();
@@ -152,9 +198,17 @@ export function FeedList() {
     const cv = (
       partial.category !== undefined ? partial.category : categoryUrl
     ).trim();
+    const iv = (
+      partial.includeIng !== undefined ? partial.includeIng : includeIngUrl
+    ).trim();
+    const ev = (
+      partial.excludeIng !== undefined ? partial.excludeIng : excludeIngUrl
+    ).trim();
     if (qv) p.set("q", qv);
     if (tv) p.set("tag", tv.toLowerCase());
     if (cv) p.set("category", cv);
+    if (iv) p.set("includeIng", iv);
+    if (ev) p.set("excludeIng", ev);
     router.replace(`/feed?${p.toString()}`);
   }
 
@@ -188,6 +242,8 @@ export function FeedList() {
           q: qUrl,
           tag: tagUrl,
           category: categoryUrl,
+          includeIng: includeIngUrl,
+          excludeIng: excludeIngUrl,
         });
         const url = `${getApiBaseUrl()}/recipes?${qs}`;
         const res = isSignedIn
@@ -228,7 +284,15 @@ export function FeedList() {
         if (append) setLoadingMore(false);
       }
     },
-    [getToken, isSignedIn, qUrl, tagUrl, categoryUrl],
+    [
+      getToken,
+      isSignedIn,
+      qUrl,
+      tagUrl,
+      categoryUrl,
+      includeIngUrl,
+      excludeIngUrl,
+    ],
   );
 
   useEffect(() => {
@@ -236,7 +300,16 @@ export function FeedList() {
     setRecipes(null);
     setNextOffset(null);
     void loadPage(0, false);
-  }, [isLoaded, isSignedIn, loadPage, qUrl, tagUrl, categoryUrl]);
+  }, [
+    isLoaded,
+    isSignedIn,
+    loadPage,
+    qUrl,
+    tagUrl,
+    categoryUrl,
+    includeIngUrl,
+    excludeIngUrl,
+  ]);
 
   useEffect(() => {
     const el = loadMoreRef.current;
@@ -392,65 +465,125 @@ export function FeedList() {
         description="Published recipes from the community — scroll for more, like and save posts."
       />
 
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-        <div className="min-w-0 flex-1 space-y-1.5">
+      <div className="mb-6 space-y-4">
+        <div className="min-w-0 space-y-1.5">
           <label htmlFor="feed-search" className="text-xs font-medium text-muted-foreground">
             Search
           </label>
           <Input
             id="feed-search"
             type="search"
-            placeholder="Title, category, or tag…"
+            placeholder="Search title, tags, ingredients…"
             value={qInput}
             onChange={(e) => setQInput(e.target.value)}
-            className="max-w-md"
+            className="w-full md:max-w-xl"
             autoComplete="off"
           />
         </div>
-        <div className="flex min-w-40 flex-col gap-1.5 sm:max-w-48">
-          <label
-            htmlFor="feed-filter-category"
-            className="text-xs font-medium text-muted-foreground"
-          >
-            Category
-          </label>
-          <CustomMenuSelect
-            id="feed-filter-category"
-            value={categoryUrl}
-            onChange={(v) => replaceFeedQuery({ category: v })}
-            options={categoryOptions}
-            listboxAriaLabel="Category list"
-            placeholder="All categories"
-          />
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
+          <div className="min-w-0 space-y-1.5">
+            <label
+              htmlFor="feed-include-ing"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Include ingredients
+            </label>
+            <Input
+              id="feed-include-ing"
+              type="text"
+              placeholder="e.g. chicken, garlic"
+              value={includeIngInput}
+              onChange={(e) => setIncludeIngInput(e.target.value)}
+              className="w-full"
+              autoComplete="off"
+              aria-describedby="feed-include-ing-hint"
+            />
+            <p
+              id="feed-include-ing-hint"
+              className="text-[0.7rem] leading-snug text-muted-foreground sm:text-xs"
+            >
+              Comma-separated — every term must appear in ingredients.
+            </p>
+          </div>
+          <div className="min-w-0 space-y-1.5">
+            <label
+              htmlFor="feed-exclude-ing"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Exclude ingredients
+            </label>
+            <Input
+              id="feed-exclude-ing"
+              type="text"
+              placeholder="e.g. dairy, nuts"
+              value={excludeIngInput}
+              onChange={(e) => setExcludeIngInput(e.target.value)}
+              className="w-full"
+              autoComplete="off"
+              aria-describedby="feed-exclude-ing-hint"
+            />
+            <p
+              id="feed-exclude-ing-hint"
+              className="text-[0.7rem] leading-snug text-muted-foreground sm:text-xs"
+            >
+              Comma-separated — hide if any term appears in ingredients.
+            </p>
+          </div>
         </div>
-        <div className="flex min-w-40 flex-col gap-1.5 sm:max-w-48">
-          <label
-            htmlFor="feed-filter-tag"
-            className="text-xs font-medium text-muted-foreground"
-          >
-            Tag
-          </label>
-          <CustomMenuSelect
-            id="feed-filter-tag"
-            value={tagUrl}
-            onChange={(v) => replaceFeedQuery({ tag: v })}
-            options={tagOptions}
-            listboxAriaLabel="Tag list"
-            placeholder="All tags"
-          />
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="min-w-0 w-full sm:min-w-42 sm:max-w-[min(100%,16rem)] sm:flex-1">
+            <label
+              htmlFor="feed-filter-category"
+              className="mb-1.5 block text-xs font-medium text-muted-foreground"
+            >
+              Category
+            </label>
+            <CustomMenuSelect
+              id="feed-filter-category"
+              value={categoryUrl}
+              onChange={(v) => replaceFeedQuery({ category: v })}
+              options={categoryOptions}
+              listboxAriaLabel="Category list"
+              placeholder="All categories"
+            />
+          </div>
+          <div className="min-w-0 w-full sm:min-w-42 sm:max-w-[min(100%,16rem)] sm:flex-1">
+            <label
+              htmlFor="feed-filter-tag"
+              className="mb-1.5 block text-xs font-medium text-muted-foreground"
+            >
+              Tag
+            </label>
+            <CustomMenuSelect
+              id="feed-filter-tag"
+              value={tagUrl}
+              onChange={(v) => replaceFeedQuery({ tag: v })}
+              options={tagOptions}
+              listboxAriaLabel="Tag list"
+              placeholder="All tags"
+            />
+          </div>
+          {qUrl ||
+          tagUrl ||
+          categoryUrl ||
+          includeIngUrl ||
+          excludeIngUrl ? (
+            <button
+              type="button"
+              className="h-9 w-full shrink-0 rounded-md border border-border bg-muted/40 px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:w-auto sm:self-end"
+              onClick={() => {
+                setQInput("");
+                setIncludeIngInput("");
+                setExcludeIngInput("");
+                router.replace("/feed");
+              }}
+            >
+              Clear filters
+            </button>
+          ) : null}
         </div>
-        {qUrl || tagUrl || categoryUrl ? (
-          <button
-            type="button"
-            className="h-9 shrink-0 rounded-md border border-border bg-muted/40 px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-            onClick={() => {
-              setQInput("");
-              router.replace("/feed");
-            }}
-          >
-            Clear filters
-          </button>
-        ) : null}
       </div>
 
       {error ? (

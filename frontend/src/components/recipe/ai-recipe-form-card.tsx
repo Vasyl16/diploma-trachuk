@@ -23,7 +23,7 @@ export type AiRecipeFormValues = {
 type AiRecipeFormCardProps = {
   values: AiRecipeFormValues;
   onChange: (field: keyof AiRecipeFormValues, value: string) => void;
-  /** When true, the API also generates a dish image (DALL·E; uses OpenAI Images API). */
+  /** When true, the API also generates a dish image on the server after the recipe is saved. */
   generateImage: boolean;
   onGenerateImageChange: (value: boolean) => void;
   onSubmit: (e: React.FormEvent) => void;
@@ -40,6 +40,11 @@ export function AiRecipeFormCard({
   loading,
   error,
 }: AiRecipeFormCardProps) {
+  const busy = loading;
+  const loadingLabel = generateImage
+    ? 'Generating recipe and image…'
+    : 'Generating recipe…';
+
   return (
     <Card className="border-border/80 shadow-md shadow-black/5 dark:shadow-black/20">
       <CardHeader className="space-y-1 pb-2">
@@ -61,7 +66,7 @@ export function AiRecipeFormCard({
               placeholder="e.g. eggs, milk, flour, butter"
               value={values.ingredients}
               onChange={(e) => onChange('ingredients', e.target.value)}
-              disabled={loading}
+              disabled={busy}
             />
           </FormField>
 
@@ -71,7 +76,7 @@ export function AiRecipeFormCard({
               placeholder="e.g. breakfast, pasta, soup"
               value={values.dishType}
               onChange={(e) => onChange('dishType', e.target.value)}
-              disabled={loading}
+              disabled={busy}
             />
           </FormField>
 
@@ -86,7 +91,7 @@ export function AiRecipeFormCard({
               placeholder="Type (e.g. easy) or pick from suggestions"
               value={values.complexity}
               onChange={(e) => onChange('complexity', e.target.value)}
-              disabled={loading}
+              disabled={busy}
               autoComplete="off"
             />
             <datalist id="complexity-options">
@@ -103,11 +108,14 @@ export function AiRecipeFormCard({
                 className="mt-0.5 size-4 shrink-0 rounded border-border accent-primary"
                 checked={generateImage}
                 onChange={(e) => onGenerateImageChange(e.target.checked)}
-                disabled={loading}
+                disabled={busy}
               />
               <span>
                 <span className="font-medium text-foreground">
                   Generate dish image
+                </span>
+                <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                  Generated on the server — no extra accounts or popups.
                 </span>
               </span>
             </label>
@@ -117,14 +125,14 @@ export function AiRecipeFormCard({
 
           <Button
             type="submit"
-            disabled={loading}
+            disabled={busy}
             size="lg"
             className="inline-flex w-full items-center gap-2 sm:w-auto"
           >
-            {loading ? (
+            {busy ? (
               <>
                 <Loader2 className="animate-spin" />
-                Generating…
+                {loadingLabel}
               </>
             ) : (
               <>

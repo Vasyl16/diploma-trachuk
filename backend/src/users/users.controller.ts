@@ -14,7 +14,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { User } from '@prisma/client';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { S3StorageService } from '../storage/s3-storage.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UsersService } from './users.service';
 
@@ -22,7 +22,7 @@ import { UsersService } from './users.service';
 export class UsersController {
   constructor(
     private readonly usersService: UsersService,
-    private readonly s3Storage: S3StorageService,
+    private readonly storage: StorageService,
   ) {}
 
   /** Current user profile (DB avatar for feed/profile UI). */
@@ -53,7 +53,10 @@ export class UsersController {
       throw new BadRequestException('Missing image file (field name: file)');
     }
     try {
-      const avatarUrl = await this.s3Storage.uploadAvatar(
+      if (user.avatarUrl) {
+        await this.storage.deleteFile(user.avatarUrl);
+      }
+      const avatarUrl = await this.storage.uploadAvatar(
         file.buffer,
         file.mimetype,
         user.id,

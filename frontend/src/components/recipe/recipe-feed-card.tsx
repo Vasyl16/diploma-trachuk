@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { RecipeAiBadges } from "@/components/recipe/recipe-ai-badges";
 import { RecipeCardMedia } from "@/components/recipe/recipe-media";
 import { cn } from "@/lib/utils";
 import type { FeedRecipe } from "@/types/recipe";
@@ -65,7 +66,7 @@ export function RecipeFeedCard({
             </Link>
           </CardTitle>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-            {recipe.isAI ? <Badge variant="ai">AI</Badge> : null}
+            {recipe.isAI ? <RecipeAiBadges /> : null}
             {recipe.category ? (
               <Badge variant="secondary" className="max-w-[10rem] truncate">
                 {recipe.category}

@@ -91,19 +91,34 @@ let AiService = AiService_1 = class AiService {
         this.config = config;
     }
     async generateRecipe(input) {
-        const apiKey = this.config.get('OPENAI_API_KEY')?.trim() ||
-            this.config.get('OPENROUTER_API_KEY')?.trim();
-        if (!apiKey) {
-            throw new common_1.ServiceUnavailableException('Set OPENAI_API_KEY (or OPENROUTER_API_KEY) in your environment.');
+        const openRouterKey = this.config.get('OPENROUTER_API_KEY')?.trim();
+        const openRouterBase = this.config
+            .get('OPENROUTER_BASE_URL')
+            ?.trim();
+        const openAiKey = this.config.get('OPENAI_API_KEY')?.trim();
+        const openAiBase = this.config.get('OPENAI_BASE_URL')?.trim();
+        const openRouterReady = Boolean(openRouterKey && openRouterBase);
+        let apiKey;
+        let baseURL;
+        let model;
+        if (openRouterReady) {
+            apiKey = openRouterKey;
+            baseURL = openRouterBase.replace(/\/$/, '');
+            model =
+                this.config.get('OPENROUTER_MODEL')?.trim() ||
+                    'openai/gpt-4o-mini';
         }
-        const baseURL = this.config.get('OPENAI_BASE_URL')?.trim() ||
-            this.config.get('OPENROUTER_BASE_URL')?.trim();
-        const model = this.config.get('OPENAI_MODEL')?.trim() ||
-            this.config.get('OPENROUTER_MODEL')?.trim() ||
-            'gpt-4o-mini';
+        else if (openAiKey) {
+            apiKey = openAiKey;
+            baseURL = openAiBase?.replace(/\/$/, '');
+            model = this.config.get('OPENAI_MODEL')?.trim() || 'gpt-4o-mini';
+        }
+        else {
+            throw new common_1.ServiceUnavailableException('Set OPENAI_API_KEY (optional OPENAI_BASE_URL), or both OPENROUTER_API_KEY and OPENROUTER_BASE_URL.');
+        }
         const openai = new openai_1.default({
             apiKey,
-            ...(baseURL ? { baseURL: baseURL.replace(/\/$/, '') } : {}),
+            ...(baseURL ? { baseURL } : {}),
         });
         const payload = {
             ingredients: input.ingredients ?? [],
@@ -145,51 +160,12 @@ let AiService = AiService_1 = class AiService {
                 throw e;
             }
             if (e instanceof openai_1.APIError) {
-                throw new common_1.ServiceUnavailableException(`OpenAI request failed: ${e.message}`);
+                const hint = e.status === 401
+                    ? ' Use OPENROUTER_API_KEY with OPENROUTER_BASE_URL together (not OPENAI_API_KEY against OpenRouter). Restart the API after changing backend/.env.'
+                    : '';
+                throw new common_1.ServiceUnavailableException(`OpenAI request failed: ${e.message}.${hint}`);
             }
             throw new common_1.ServiceUnavailableException(e instanceof Error ? e.message : 'OpenAI request failed');
-        }
-    }
-    async generateDishImage(params) {
-        const apiKey = this.config.get('OPENAI_API_KEY')?.trim();
-        if (!apiKey) {
-            this.logger.warn('Dish image skipped: set OPENAI_API_KEY for DALL·E (OpenRouter keys are not used for images).');
-            return null;
-        }
-        const model = this.config.get('OPENAI_IMAGE_MODEL')?.trim() || 'dall-e-3';
-        const openai = new openai_1.default({ apiKey });
-        const dish = params.dishType?.trim();
-        const prompt = [
-            'Professional food photography, top-down and slightly angled view.',
-            `The dish: ${params.title.trim()}.`,
-            dish ? `Style / type: ${dish}.` : '',
-            'Appetizing, natural soft lighting, shallow depth of field, no text, no watermark, no people, no hands.',
-        ]
-            .filter(Boolean)
-            .join(' ');
-        try {
-            const res = await openai.images.generate({
-                model,
-                prompt,
-                n: 1,
-                size: '1024x1024',
-                response_format: 'b64_json',
-            });
-            const b64 = res.data?.[0]?.b64_json;
-            if (!b64) {
-                this.logger.warn('Dish image: empty b64 from API');
-                return null;
-            }
-            return Buffer.from(b64, 'base64');
-        }
-        catch (e) {
-            if (e instanceof openai_1.APIError) {
-                this.logger.warn(`Dish image failed: ${e.message}`);
-            }
-            else {
-                this.logger.warn(e instanceof Error ? e.message : 'Dish image generation failed');
-            }
-            return null;
         }
     }
 };

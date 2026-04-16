@@ -4,11 +4,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateUserDto } from './dto/create-user.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   findAll() {
     return this.prisma.user.findMany();
@@ -141,8 +145,16 @@ export class UsersService {
   }
 
   async removeByClerkId(clerkId: string) {
-    const user = await this.prisma.user.findUnique({ where: { clerkId } });
+    const user = await this.prisma.user.findUnique({
+      where: { clerkId },
+      include: { recipes: { select: { imageUrl: true } } },
+    });
     if (!user) return;
+    const urls = [
+      user.avatarUrl,
+      ...user.recipes.map((r) => r.imageUrl),
+    ].filter((u): u is string => Boolean(u));
+    await this.storage.deleteFiles(urls);
     await this.prisma.$transaction([
       this.prisma.recipe.deleteMany({ where: { userId: user.id } }),
       this.prisma.user.delete({ where: { id: user.id } }),

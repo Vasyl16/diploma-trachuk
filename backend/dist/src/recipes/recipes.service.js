@@ -12,19 +12,23 @@ var RecipesService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RecipesService = void 0;
 const common_1 = require("@nestjs/common");
+const config_1 = require("@nestjs/config");
 const client_1 = require("@prisma/client");
 const ai_service_1 = require("../ai/ai.service");
 const prisma_service_1 = require("../prisma/prisma.service");
-const s3_storage_service_1 = require("../storage/s3-storage.service");
+const storage_service_1 = require("../storage/storage.service");
+const dish_image_pollinations_1 = require("./dish-image-pollinations");
 let RecipesService = RecipesService_1 = class RecipesService {
     prisma;
     aiService;
-    s3Storage;
+    storage;
+    config;
     logger = new common_1.Logger(RecipesService_1.name);
-    constructor(prisma, aiService, s3Storage) {
+    constructor(prisma, aiService, storage, config) {
         this.prisma = prisma;
         this.aiService = aiService;
-        this.s3Storage = s3Storage;
+        this.storage = storage;
+        this.config = config;
     }
     async getPublishedFeedFacets() {
         const rows = await this.prisma.recipe.findMany({
@@ -54,7 +58,47 @@ let RecipesService = RecipesService_1 = class RecipesService {
           SELECT 1 FROM unnest(r.tags) AS t(tag)
           WHERE tag ILIKE ${pattern}
         )
+        OR EXISTS (
+          SELECT 1 FROM unnest(r.ingredients) AS ing(line)
+          WHERE line ILIKE ${pattern}
+        )
       )
+    `;
+        return rows.map((r) => r.id);
+    }
+    parseIngredientFilter(raw) {
+        if (!raw?.trim())
+            return [];
+        return raw
+            .split(',')
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0);
+    }
+    async idsMatchingIngredientIncludeAll(terms) {
+        if (terms.length === 0)
+            return [];
+        const parts = terms.map((term) => client_1.Prisma.sql `EXISTS (
+          SELECT 1 FROM unnest(r.ingredients) AS ing(line)
+          WHERE line ILIKE ${`%${term}%`}
+        )`);
+        const rows = await this.prisma.$queryRaw `
+      SELECT r.id FROM "Recipe" r
+      WHERE r."isPublished" = true
+      AND ${client_1.Prisma.join(parts, ' AND ')}
+    `;
+        return rows.map((r) => r.id);
+    }
+    async idsMatchingIngredientExcludeAny(terms) {
+        if (terms.length === 0)
+            return [];
+        const parts = terms.map((term) => client_1.Prisma.sql `EXISTS (
+          SELECT 1 FROM unnest(r.ingredients) AS ing(line)
+          WHERE line ILIKE ${`%${term}%`}
+        )`);
+        const rows = await this.prisma.$queryRaw `
+      SELECT r.id FROM "Recipe" r
+      WHERE r."isPublished" = true
+      AND (${client_1.Prisma.join(parts, ' OR ')})
     `;
         return rows.map((r) => r.id);
     }
@@ -76,11 +120,23 @@ let RecipesService = RecipesService_1 = class RecipesService {
             }
             parts.push({ id: { in: ids } });
         }
+        const includeTerms = this.parseIngredientFilter(params.includeIng);
+        if (includeTerms.length > 0) {
+            const ids = await this.idsMatchingIngredientIncludeAll(includeTerms);
+            if (ids.length === 0) {
+                return { items: [], nextOffset: null };
+            }
+            parts.push({ id: { in: ids } });
+        }
+        const excludeTerms = this.parseIngredientFilter(params.excludeIng);
+        if (excludeTerms.length > 0) {
+            const excludeIds = await this.idsMatchingIngredientExcludeAny(excludeTerms);
+            if (excludeIds.length > 0) {
+                parts.push({ id: { notIn: excludeIds } });
+            }
+        }
         const where = parts.length === 1 ? parts[0] : { AND: parts };
-        const orderBy = [
-            { createdAt: 'desc' },
-            { id: 'desc' },
-        ];
+        const orderBy = [{ createdAt: 'desc' }, { id: 'desc' }];
         const { offset, limit } = params;
         const take = limit + 1;
         if (currentUserId) {
@@ -431,18 +487,66 @@ let RecipesService = RecipesService_1 = class RecipesService {
         return rows.map((r) => mapRow(r, false, false));
     }
     create(data, userId) {
-        const tags = (data.tags ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean);
+        const tags = (data.tags ?? [])
+            .map((t) => t.trim().toLowerCase())
+            .filter(Boolean);
         return this.prisma.recipe.create({
             data: {
                 title: data.title,
                 ingredients: data.ingredients,
                 steps: data.steps,
-                isAI: data.isAI,
+                isAI: data.isAI ?? false,
                 category: data.category?.trim() || null,
                 tags,
                 userId,
             },
         });
+    }
+    async updateForUser(id, userId, dto) {
+        const recipe = await this.prisma.recipe.findUnique({ where: { id } });
+        if (!recipe) {
+            throw new common_1.NotFoundException(`Recipe with id ${id} not found`);
+        }
+        if (recipe.userId !== userId) {
+            throw new common_1.ForbiddenException('You can only edit your own recipes');
+        }
+        const data = {};
+        if (dto.title !== undefined) {
+            const t = dto.title.trim();
+            if (!t) {
+                throw new common_1.BadRequestException('Title cannot be empty');
+            }
+            data.title = t;
+        }
+        if (dto.ingredients !== undefined) {
+            const ing = dto.ingredients
+                .map((s) => String(s).trim())
+                .filter(Boolean);
+            if (!ing.length) {
+                throw new common_1.BadRequestException('Ingredients cannot be empty');
+            }
+            data.ingredients = ing;
+        }
+        if (dto.steps !== undefined) {
+            const st = dto.steps.map((s) => String(s).trim()).filter(Boolean);
+            if (!st.length) {
+                throw new common_1.BadRequestException('Steps cannot be empty');
+            }
+            data.steps = st;
+        }
+        if (dto.category !== undefined) {
+            const c = dto.category.trim();
+            data.category = c.length ? c : null;
+        }
+        if (dto.tags !== undefined) {
+            data.tags = dto.tags
+                .map((t) => t.trim().toLowerCase())
+                .filter(Boolean);
+        }
+        if (Object.keys(data).length === 0) {
+            throw new common_1.BadRequestException('No changes provided');
+        }
+        return this.prisma.recipe.update({ where: { id }, data });
     }
     async generateAiRecipe(input, userId) {
         const aiCount = await this.prisma.recipe.count({
@@ -460,7 +564,10 @@ let RecipesService = RecipesService_1 = class RecipesService {
             dishType: input.dishType,
             complexity: input.complexity,
         });
-        const dish = (input.dishType ?? 'general').trim().toLowerCase().replace(/\s+/g, '-');
+        const dish = (input.dishType ?? 'general')
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, '-');
         const aiTags = [dish, 'ai'].filter(Boolean);
         const recipe = await this.prisma.recipe.create({
             data: {
@@ -477,18 +584,18 @@ let RecipesService = RecipesService_1 = class RecipesService {
         if (!wantsImage) {
             return { recipe };
         }
-        const imageBuffer = await this.aiService.generateDishImage({
-            title: generated.title,
-            dishType: input.dishType,
-        });
-        if (!imageBuffer) {
-            return {
-                recipe,
-                imageNote: 'Dish image was not created. Add OPENAI_API_KEY to backend/.env. DALL·E uses OpenAI’s Images API only (OpenRouter / OPENROUTER_API_KEY is for chat, not images). Check the API terminal logs for details.',
-            };
-        }
         try {
-            const imageUrl = await this.s3Storage.uploadRecipeImage(imageBuffer, 'image/png', userId, recipe.id);
+            const prompt = (0, dish_image_pollinations_1.buildDishImagePrompt)(generated.title, input.dishType);
+            const width = this.parseImageDimension('DISH_IMAGE_WIDTH', 1024);
+            const height = this.parseImageDimension('DISH_IMAGE_HEIGHT', 1024);
+            const model = this.config.get('DISH_IMAGE_POLLINATIONS_MODEL')?.trim() ||
+                'flux';
+            const { buffer, contentType } = await (0, dish_image_pollinations_1.fetchPollinationsDishImage)(prompt, {
+                width,
+                height,
+                model,
+            });
+            const imageUrl = await this.storage.uploadRecipeImage(buffer, contentType, userId, recipe.id);
             const updated = await this.prisma.recipe.update({
                 where: { id: recipe.id },
                 data: { imageUrl },
@@ -496,12 +603,71 @@ let RecipesService = RecipesService_1 = class RecipesService {
             return { recipe: updated };
         }
         catch (e) {
-            const msg = e instanceof Error ? e.message : 'Upload failed';
-            this.logger.error(`Recipe image upload failed: ${msg}`);
+            this.logger.warn(`Failed to attach dish image for recipe ${recipe.id}`, e instanceof Error ? e.stack : e);
             return {
                 recipe,
-                imageNote: `Recipe saved, but storing the image failed: ${msg}`,
+                imageNote: 'Could not generate a dish image automatically. You can add one later from your profile.',
             };
+        }
+    }
+    parseImageDimension(envKey, fallback) {
+        const raw = this.config.get(envKey)?.trim();
+        const n = raw ? parseInt(raw, 10) : NaN;
+        if (!Number.isFinite(n))
+            return fallback;
+        return Math.min(2048, Math.max(256, n));
+    }
+    async uploadDishImageFromBase64(recipeId, userId, imageBase64Raw) {
+        const recipe = await this.prisma.recipe.findUnique({
+            where: { id: recipeId },
+        });
+        if (!recipe) {
+            throw new common_1.NotFoundException(`Recipe with id ${recipeId} not found`);
+        }
+        if (recipe.userId !== userId) {
+            throw new common_1.ForbiddenException('You can only update your own recipes');
+        }
+        const stripped = imageBase64Raw.trim();
+        const parsedMime = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(stripped);
+        let buffer;
+        let mime = 'image/png';
+        if (parsedMime) {
+            mime = parsedMime[1].toLowerCase();
+            const base64 = parsedMime[2].replace(/\s/g, '');
+            try {
+                buffer = Buffer.from(base64, 'base64');
+            }
+            catch {
+                throw new common_1.BadRequestException('Invalid base64 image data');
+            }
+        }
+        else {
+            const base64 = stripped.replace(/\s/g, '');
+            try {
+                buffer = Buffer.from(base64, 'base64');
+            }
+            catch {
+                throw new common_1.BadRequestException('Invalid base64 image data');
+            }
+        }
+        const maxBytes = 6 * 1024 * 1024;
+        if (buffer.length === 0 || buffer.length > maxBytes) {
+            throw new common_1.BadRequestException('Image data is empty or too large (max 6MB)');
+        }
+        if (recipe.imageUrl) {
+            await this.storage.deleteFile(recipe.imageUrl);
+        }
+        try {
+            const imageUrl = await this.storage.uploadRecipeImage(buffer, mime, userId, recipeId);
+            return this.prisma.recipe.update({
+                where: { id: recipeId },
+                data: { imageUrl },
+            });
+        }
+        catch (e) {
+            const msg = e instanceof Error ? e.message : 'Upload failed';
+            this.logger.error(`Recipe dish image upload failed: ${msg}`);
+            throw new common_1.BadRequestException(msg);
         }
     }
     async deleteForUser(id, userId) {
@@ -511,6 +677,9 @@ let RecipesService = RecipesService_1 = class RecipesService {
         }
         if (recipe.userId !== userId) {
             throw new common_1.ForbiddenException('You can only delete your own recipes');
+        }
+        if (recipe.imageUrl) {
+            await this.storage.deleteFile(recipe.imageUrl);
         }
         return this.prisma.recipe.delete({ where: { id } });
     }
@@ -546,6 +715,7 @@ exports.RecipesService = RecipesService = RecipesService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         ai_service_1.AiService,
-        s3_storage_service_1.S3StorageService])
+        storage_service_1.StorageService,
+        config_1.ConfigService])
 ], RecipesService);
 //# sourceMappingURL=recipes.service.js.map

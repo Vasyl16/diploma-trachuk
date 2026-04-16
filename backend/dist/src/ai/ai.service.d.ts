@@ -14,8 +14,4 @@ export declare class AiService {
     private readonly logger;
     constructor(config: ConfigService);
     generateRecipe(input: GenerateRecipeInput): Promise<GeneratedRecipePayload>;
-    generateDishImage(params: {
-        title: string;
-        dishType?: string;
-    }): Promise<Buffer | null>;
 }

@@ -14,6 +14,8 @@ const badgeVariants = cva(
           "border-transparent bg-zinc-100 text-zinc-900 hover:bg-zinc-100/80 dark:bg-zinc-800 dark:text-zinc-50",
         outline: "text-zinc-950 dark:text-zinc-50",
         ai: "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200",
+        aiHelp:
+          "border-violet-100 bg-violet-50/80 text-violet-700 dark:border-violet-900 dark:bg-violet-950/50 dark:text-violet-300",
       },
     },
     defaultVariants: {

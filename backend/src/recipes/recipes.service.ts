@@ -5,16 +5,22 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma, type Recipe } from '@prisma/client';
 import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { S3StorageService } from '../storage/s3-storage.service';
+import { StorageService } from '../storage/storage.service';
 import type { AiGenerateRecipeDto } from './dto/ai-generate-recipe.dto';
 import { CreateRecipeDto } from './dto/create-recipe.dto';
+import { UpdateRecipeDto } from './dto/update-recipe.dto';
+import {
+  buildDishImagePrompt,
+  fetchPollinationsDishImage,
+} from './dish-image-pollinations';
 
 export type AiGenerateRecipeResult = {
   recipe: Recipe;
-  /** Set when the client asked for an image but it could not be stored. */
+  /** Set when a dish image was requested but generation or upload failed. */
   imageNote?: string;
 };
 
@@ -25,7 +31,8 @@ export class RecipesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
-    private readonly s3Storage: S3StorageService,
+    private readonly storage: StorageService,
+    private readonly config: ConfigService,
   ) {}
 
   /** Distinct categories and tags from published recipes (for filter UI). */
@@ -48,7 +55,7 @@ export class RecipesService {
   }
 
   /**
-   * Published recipe ids matching free-text `q` (title, category, or any tag substring).
+   * Published recipe ids matching free-text `q` (title, category, any tag, or any ingredient line).
    */
   private async idsMatchingFeedTextSearch(q: string): Promise<string[]> {
     const trimmed = q.trim();
@@ -64,7 +71,60 @@ export class RecipesService {
           SELECT 1 FROM unnest(r.tags) AS t(tag)
           WHERE tag ILIKE ${pattern}
         )
+        OR EXISTS (
+          SELECT 1 FROM unnest(r.ingredients) AS ing(line)
+          WHERE line ILIKE ${pattern}
+        )
       )
+    `;
+    return rows.map((r) => r.id);
+  }
+
+  /** Comma-separated ingredient substrings → trimmed non-empty terms. */
+  private parseIngredientFilter(raw: string | undefined): string[] {
+    if (!raw?.trim()) return [];
+    return raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  }
+
+  /** Recipes where every term appears as a substring in at least one ingredient line. */
+  private async idsMatchingIngredientIncludeAll(
+    terms: string[],
+  ): Promise<string[]> {
+    if (terms.length === 0) return [];
+    const parts = terms.map(
+      (term) =>
+        Prisma.sql`EXISTS (
+          SELECT 1 FROM unnest(r.ingredients) AS ing(line)
+          WHERE line ILIKE ${`%${term}%`}
+        )`,
+    );
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT r.id FROM "Recipe" r
+      WHERE r."isPublished" = true
+      AND ${Prisma.join(parts, ' AND ')}
+    `;
+    return rows.map((r) => r.id);
+  }
+
+  /** Recipe ids that contain any excluded term in any ingredient line (to filter out). */
+  private async idsMatchingIngredientExcludeAny(
+    terms: string[],
+  ): Promise<string[]> {
+    if (terms.length === 0) return [];
+    const parts = terms.map(
+      (term) =>
+        Prisma.sql`EXISTS (
+          SELECT 1 FROM unnest(r.ingredients) AS ing(line)
+          WHERE line ILIKE ${`%${term}%`}
+        )`,
+    );
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT r.id FROM "Recipe" r
+      WHERE r."isPublished" = true
+      AND (${Prisma.join(parts, ' OR ')})
     `;
     return rows.map((r) => r.id);
   }
@@ -78,6 +138,8 @@ export class RecipesService {
       q?: string;
       tag?: string;
       category?: string;
+      includeIng?: string;
+      excludeIng?: string;
     },
   ) {
     const parts: Prisma.RecipeWhereInput[] = [{ isPublished: true }];
@@ -97,12 +159,26 @@ export class RecipesService {
       }
       parts.push({ id: { in: ids } });
     }
+    const includeTerms = this.parseIngredientFilter(params.includeIng);
+    if (includeTerms.length > 0) {
+      const ids = await this.idsMatchingIngredientIncludeAll(includeTerms);
+      if (ids.length === 0) {
+        return { items: [], nextOffset: null };
+      }
+      parts.push({ id: { in: ids } });
+    }
+    const excludeTerms = this.parseIngredientFilter(params.excludeIng);
+    if (excludeTerms.length > 0) {
+      const excludeIds = await this.idsMatchingIngredientExcludeAny(
+        excludeTerms,
+      );
+      if (excludeIds.length > 0) {
+        parts.push({ id: { notIn: excludeIds } });
+      }
+    }
     const where: Prisma.RecipeWhereInput =
-      parts.length === 1 ? parts[0]! : { AND: parts };
-    const orderBy = [
-      { createdAt: 'desc' as const },
-      { id: 'desc' as const },
-    ];
+      parts.length === 1 ? parts[0] : { AND: parts };
+    const orderBy = [{ createdAt: 'desc' as const }, { id: 'desc' as const }];
     const { offset, limit } = params;
     const take = limit + 1;
 
@@ -130,11 +206,7 @@ export class RecipesService {
       const hasMore = rows.length > limit;
       const slice = hasMore ? rows.slice(0, limit) : rows;
       const items = slice.map((r) =>
-        this.mapFeedRow(
-          r,
-          r.recipeLikes.length > 0,
-          r.favorites.length > 0,
-        ),
+        this.mapFeedRow(r, r.recipeLikes.length > 0, r.favorites.length > 0),
       );
       return {
         items,
@@ -512,11 +584,7 @@ export class RecipesService {
         },
       });
       return rows.map((r) =>
-        mapRow(
-          r,
-          r.recipeLikes.length > 0,
-          r.favorites.length > 0,
-        ),
+        mapRow(r, r.recipeLikes.length > 0, r.favorites.length > 0),
       );
     }
 
@@ -532,18 +600,71 @@ export class RecipesService {
   }
 
   create(data: CreateRecipeDto, userId: string) {
-    const tags = (data.tags ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean);
+    const tags = (data.tags ?? [])
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
     return this.prisma.recipe.create({
       data: {
         title: data.title,
         ingredients: data.ingredients,
         steps: data.steps,
-        isAI: data.isAI,
+        isAI: data.isAI ?? false,
         category: data.category?.trim() || null,
         tags,
         userId,
       },
     });
+  }
+
+  async updateForUser(id: string, userId: string, dto: UpdateRecipeDto) {
+    const recipe = await this.prisma.recipe.findUnique({ where: { id } });
+    if (!recipe) {
+      throw new NotFoundException(`Recipe with id ${id} not found`);
+    }
+    if (recipe.userId !== userId) {
+      throw new ForbiddenException('You can only edit your own recipes');
+    }
+
+    const data: Prisma.RecipeUpdateInput = {};
+
+    if (dto.title !== undefined) {
+      const t = dto.title.trim();
+      if (!t) {
+        throw new BadRequestException('Title cannot be empty');
+      }
+      data.title = t;
+    }
+    if (dto.ingredients !== undefined) {
+      const ing = dto.ingredients
+        .map((s) => String(s).trim())
+        .filter(Boolean);
+      if (!ing.length) {
+        throw new BadRequestException('Ingredients cannot be empty');
+      }
+      data.ingredients = ing;
+    }
+    if (dto.steps !== undefined) {
+      const st = dto.steps.map((s) => String(s).trim()).filter(Boolean);
+      if (!st.length) {
+        throw new BadRequestException('Steps cannot be empty');
+      }
+      data.steps = st;
+    }
+    if (dto.category !== undefined) {
+      const c = dto.category.trim();
+      data.category = c.length ? c : null;
+    }
+    if (dto.tags !== undefined) {
+      data.tags = dto.tags
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean);
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('No changes provided');
+    }
+
+    return this.prisma.recipe.update({ where: { id }, data });
   }
 
   async generateAiRecipe(
@@ -567,7 +688,10 @@ export class RecipesService {
       complexity: input.complexity,
     });
 
-    const dish = (input.dishType ?? 'general').trim().toLowerCase().replace(/\s+/g, '-');
+    const dish = (input.dishType ?? 'general')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '-');
     const aiTags = [dish, 'ai'].filter(Boolean);
     const recipe = await this.prisma.recipe.create({
       data: {
@@ -586,23 +710,22 @@ export class RecipesService {
       return { recipe };
     }
 
-    const imageBuffer = await this.aiService.generateDishImage({
-      title: generated.title,
-      dishType: input.dishType,
-    });
-
-    if (!imageBuffer) {
-      return {
-        recipe,
-        imageNote:
-          'Dish image was not created. Add OPENAI_API_KEY to backend/.env. DALL·E uses OpenAI’s Images API only (OpenRouter / OPENROUTER_API_KEY is for chat, not images). Check the API terminal logs for details.',
-      };
-    }
-
     try {
-      const imageUrl = await this.s3Storage.uploadRecipeImage(
-        imageBuffer,
-        'image/png',
+      const prompt = buildDishImagePrompt(generated.title, input.dishType);
+      const width = this.parseImageDimension('DISH_IMAGE_WIDTH', 1024);
+      const height = this.parseImageDimension('DISH_IMAGE_HEIGHT', 1024);
+      const model =
+        this.config.get<string>('DISH_IMAGE_POLLINATIONS_MODEL')?.trim() ||
+        'flux';
+
+      const { buffer, contentType } = await fetchPollinationsDishImage(prompt, {
+        width,
+        height,
+        model,
+      });
+      const imageUrl = await this.storage.uploadRecipeImage(
+        buffer,
+        contentType,
         userId,
         recipe.id,
       );
@@ -612,12 +735,92 @@ export class RecipesService {
       });
       return { recipe: updated };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Upload failed';
-      this.logger.error(`Recipe image upload failed: ${msg}`);
+      this.logger.warn(
+        `Failed to attach dish image for recipe ${recipe.id}`,
+        e instanceof Error ? e.stack : e,
+      );
       return {
         recipe,
-        imageNote: `Recipe saved, but storing the image failed: ${msg}`,
+        imageNote:
+          'Could not generate a dish image automatically. You can add one later from your profile.',
       };
+    }
+  }
+
+  private parseImageDimension(envKey: string, fallback: number): number {
+    const raw = this.config.get<string>(envKey)?.trim();
+    const n = raw ? parseInt(raw, 10) : NaN;
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(2048, Math.max(256, n));
+  }
+
+  /**
+   * Attach a dish image (base64 or data URL) for any recipe the user owns.
+   */
+  async uploadDishImageFromBase64(
+    recipeId: string,
+    userId: string,
+    imageBase64Raw: string,
+  ) {
+    const recipe = await this.prisma.recipe.findUnique({
+      where: { id: recipeId },
+    });
+    if (!recipe) {
+      throw new NotFoundException(`Recipe with id ${recipeId} not found`);
+    }
+    if (recipe.userId !== userId) {
+      throw new ForbiddenException('You can only update your own recipes');
+    }
+
+    const stripped = imageBase64Raw.trim();
+    const parsedMime = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(
+      stripped,
+    );
+    let buffer: Buffer;
+    let mime = 'image/png';
+    if (parsedMime) {
+      mime = parsedMime[1].toLowerCase();
+      const base64 = parsedMime[2].replace(/\s/g, '');
+      try {
+        buffer = Buffer.from(base64, 'base64');
+      } catch {
+        throw new BadRequestException('Invalid base64 image data');
+      }
+    } else {
+      const base64 = stripped.replace(/\s/g, '');
+      try {
+        buffer = Buffer.from(base64, 'base64');
+      } catch {
+        throw new BadRequestException('Invalid base64 image data');
+      }
+    }
+
+    const maxBytes = 6 * 1024 * 1024;
+    if (buffer.length === 0 || buffer.length > maxBytes) {
+      throw new BadRequestException(
+        'Image data is empty or too large (max 6MB)',
+      );
+    }
+
+    if (recipe.imageUrl) {
+      await this.storage.deleteFile(recipe.imageUrl);
+    }
+
+    try {
+      const imageUrl = await this.storage.uploadRecipeImage(
+        buffer,
+        mime,
+        userId,
+        recipeId,
+      );
+      return this.prisma.recipe.update({
+        where: { id: recipeId },
+        data: { imageUrl },
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Upload failed';
+      this.logger.error(`Recipe dish image upload failed: ${msg}`);
+      throw new BadRequestException(msg);
     }
   }
 
@@ -628,6 +831,9 @@ export class RecipesService {
     }
     if (recipe.userId !== userId) {
       throw new ForbiddenException('You can only delete your own recipes');
+    }
+    if (recipe.imageUrl) {
+      await this.storage.deleteFile(recipe.imageUrl);
     }
     return this.prisma.recipe.delete({ where: { id } });
   }

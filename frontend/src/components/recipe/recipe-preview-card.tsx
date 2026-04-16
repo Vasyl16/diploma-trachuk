@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge";
+import { RecipeAiBadges } from "@/components/recipe/recipe-ai-badges";
 import {
   Card,
   CardContent,
@@ -29,9 +29,9 @@ export function RecipePreviewCard({
           <div className="flex flex-wrap items-center gap-2.5">
             <CardTitle className="text-2xl leading-tight">{recipe.title}</CardTitle>
             {recipe.isAI ? (
-              <Badge variant="ai" className="shrink-0 font-medium">
-                AI Generated
-              </Badge>
+              <span className="flex shrink-0 flex-wrap gap-1.5">
+                <RecipeAiBadges />
+              </span>
             ) : null}
           </div>
           <CardDescription className="text-base">{description}</CardDescription>

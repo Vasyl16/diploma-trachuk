@@ -14,7 +14,8 @@ export const MAIN_NAV_ITEMS = [
   { href: "/feed", label: "Feed" },
   { href: "/people", label: "People" },
   { href: "/profile", label: "Profile" },
-  { href: "/recipes/new", label: "AI Generator" },
+  { href: "/recipes/create", label: "New recipe" },
+  { href: "/recipes/new", label: "AI generator" },
 ] as const;
 
 type MobileNavSheetProps = {

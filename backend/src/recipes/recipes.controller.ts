@@ -13,6 +13,8 @@ import type { Recipe, User } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AiGenerateRecipeDto } from './dto/ai-generate-recipe.dto';
 import { CreateRecipeDto } from './dto/create-recipe.dto';
+import { UpdateRecipeDto } from './dto/update-recipe.dto';
+import { UploadRecipeDishImageDto } from './dto/upload-dish-image.dto';
 import { type AiGenerateRecipeResult, RecipesService } from './recipes.service';
 
 @Controller('recipes')
@@ -33,6 +35,10 @@ export class RecipesController {
     @Query('q') q?: string,
     @Query('tag') tag?: string,
     @Query('category') category?: string,
+    /** Comma-separated substrings; recipe must match every term in ingredient lines. */
+    @Query('includeIng') includeIng?: string,
+    /** Comma-separated substrings; recipes containing any term in ingredients are excluded. */
+    @Query('excludeIng') excludeIng?: string,
   ) {
     const offset = Math.max(0, parseInt(offsetRaw ?? '0', 10) || 0);
     const limit = Math.min(50, Math.max(1, parseInt(limitRaw ?? '12', 10) || 12));
@@ -42,6 +48,8 @@ export class RecipesController {
       q,
       tag,
       category,
+      includeIng,
+      excludeIng,
     });
   }
 
@@ -66,6 +74,25 @@ export class RecipesController {
       );
     }
     return await this.recipesService.generateAiRecipe(body, user.id);
+  }
+
+  /** Client-uploaded dish image as base64 (optional manual upload). */
+  @Post(':id/dish-image')
+  uploadDishImage(
+    @Param('id') id: string,
+    @CurrentUser() user: User | undefined,
+    @Body() body: UploadRecipeDishImageDto,
+  ) {
+    if (!user) {
+      throw new UnauthorizedException(
+        'Authentication required. Send a valid Clerk session token (Authorization: Bearer or __session cookie).',
+      );
+    }
+    return this.recipesService.uploadDishImageFromBase64(
+      id,
+      user.id,
+      body.imageBase64,
+    );
   }
 
   @Post()
@@ -102,6 +129,20 @@ export class RecipesController {
       );
     }
     return this.recipesService.unpublishForUser(id, user.id);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @CurrentUser() user: User | undefined,
+    @Body() body: UpdateRecipeDto,
+  ) {
+    if (!user) {
+      throw new UnauthorizedException(
+        'Authentication required. Send a valid Clerk session token (Authorization: Bearer or __session cookie).',
+      );
+    }
+    return this.recipesService.updateForUser(id, user.id, body);
   }
 
   @Post(':id/like')
