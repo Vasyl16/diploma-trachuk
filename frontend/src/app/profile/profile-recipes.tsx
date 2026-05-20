@@ -12,6 +12,7 @@ import { RecipeCardMedia } from "@/components/recipe/recipe-media";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
+import { PremiumBadge } from "@/components/user/premium-badge";
 import {
   Card,
   CardContent,
@@ -32,6 +33,7 @@ type DbUser = {
   name: string;
   email: string;
   avatarUrl: string | null;
+  isPremium: boolean;
 };
 
 function previewIngredients(ingredients: string[]): string {
@@ -246,6 +248,7 @@ export function ProfileRecipes() {
                 name: u.name,
                 email: u.email,
                 avatarUrl: u.avatarUrl,
+                isPremium: Boolean(u.isPremium),
               },
         );
       }
@@ -310,9 +313,12 @@ export function ProfileRecipes() {
               </div>
             )}
             <div>
-              <p className="font-medium leading-tight">
-                {dbUser?.name ?? "…"}
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium leading-tight">
+                  {dbUser?.name ?? "…"}
+                </p>
+                {dbUser?.isPremium ? <PremiumBadge /> : null}
+              </div>
               <p className="text-sm text-muted-foreground">
                 {dbUser?.email ?? ""}
               </p>

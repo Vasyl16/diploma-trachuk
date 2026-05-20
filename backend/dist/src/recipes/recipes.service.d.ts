@@ -20,11 +20,16 @@ export declare class RecipesService {
     getPublishedFeedFacets(): Promise<{
         categories: string[];
         tags: string[];
+        diets: string[];
+        restrictions: string[];
     }>;
     private idsMatchingFeedTextSearch;
     private parseIngredientFilter;
+    private normalizeDiet;
+    private normalizeRestrictionsList;
     private idsMatchingIngredientIncludeAll;
     private idsMatchingIngredientExcludeAny;
+    private idsMatchingRestrictionsIncludeAll;
     findPublishedFeed(currentUserId: string | undefined, params: {
         offset: number;
         limit: number;
@@ -33,6 +38,8 @@ export declare class RecipesService {
         category?: string;
         includeIng?: string;
         excludeIng?: string;
+        diet?: string;
+        restriction?: string;
     }): Promise<{
         items: {
             id: string;
@@ -41,6 +48,8 @@ export declare class RecipesService {
             steps: string[];
             category: string | null;
             tags: string[];
+            diet: string | null;
+            restrictions: string[];
             imageUrl: string | null;
             isAI: boolean;
             isPublished: boolean;
@@ -50,6 +59,7 @@ export declare class RecipesService {
             user: {
                 name: string;
                 avatarUrl: string | null;
+                isPremium: boolean;
             };
             likesCount: number;
             likedByMe: boolean;
@@ -65,6 +75,8 @@ export declare class RecipesService {
         steps: string[];
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;
@@ -74,6 +86,7 @@ export declare class RecipesService {
         user: {
             name: string;
             avatarUrl: string | null;
+            isPremium: boolean;
         };
         likesCount: number;
         likedByMe: boolean;
@@ -86,6 +99,8 @@ export declare class RecipesService {
         steps: string[];
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;
@@ -95,6 +110,7 @@ export declare class RecipesService {
         user: {
             name: string;
             avatarUrl: string | null;
+            isPremium: boolean;
         };
         likesCount: number;
         likedByMe: boolean;
@@ -114,13 +130,39 @@ export declare class RecipesService {
     unsaveRecipe(recipeId: string, userId: string): Promise<{
         savedByMe: boolean;
     }>;
+    private assertRecipeAccessibleForComments;
+    listRecipeComments(recipeId: string, viewerUserId?: string): Promise<{
+        id: string;
+        body: string;
+        createdAt: Date;
+        userId: string;
+        user: {
+            name: string;
+            avatarUrl: string | null;
+        };
+    }[]>;
+    createRecipeComment(recipeId: string, authorUserId: string, body: string): Promise<{
+        id: string;
+        userId: string;
+        createdAt: Date;
+        user: {
+            name: string;
+            avatarUrl: string | null;
+        };
+        body: string;
+    }>;
+    deleteRecipeComment(recipeId: string, commentId: string, viewerUserId: string): Promise<{
+        deleted: true;
+    }>;
     findMine(userId: string): Prisma.PrismaPromise<{
+        id: string;
         title: string;
         ingredients: string[];
         steps: string[];
-        id: string;
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;
@@ -135,6 +177,8 @@ export declare class RecipesService {
         steps: string[];
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;
@@ -144,6 +188,7 @@ export declare class RecipesService {
         user: {
             name: string;
             avatarUrl: string | null;
+            isPremium: boolean;
         };
         likesCount: number;
         likedByMe: boolean;
@@ -156,6 +201,8 @@ export declare class RecipesService {
         steps: string[];
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;
@@ -165,18 +212,21 @@ export declare class RecipesService {
         user: {
             name: string;
             avatarUrl: string | null;
+            isPremium: boolean;
         };
         likesCount: number;
         likedByMe: boolean;
         savedByMe: boolean;
     }[]>;
     create(data: CreateRecipeDto, userId: string): Prisma.Prisma__RecipeClient<{
+        id: string;
         title: string;
         ingredients: string[];
         steps: string[];
-        id: string;
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;
@@ -185,12 +235,14 @@ export declare class RecipesService {
         updatedAt: Date;
     }, never, import("@prisma/client/runtime/library").DefaultArgs, Prisma.PrismaClientOptions>;
     updateForUser(id: string, userId: string, dto: UpdateRecipeDto): Promise<{
+        id: string;
         title: string;
         ingredients: string[];
         steps: string[];
-        id: string;
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;
@@ -201,12 +253,14 @@ export declare class RecipesService {
     generateAiRecipe(input: AiGenerateRecipeDto, userId: string): Promise<AiGenerateRecipeResult>;
     private parseImageDimension;
     uploadDishImageFromBase64(recipeId: string, userId: string, imageBase64Raw: string): Promise<{
+        id: string;
         title: string;
         ingredients: string[];
         steps: string[];
-        id: string;
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;
@@ -215,12 +269,14 @@ export declare class RecipesService {
         updatedAt: Date;
     }>;
     deleteForUser(id: string, userId: string): Promise<{
+        id: string;
         title: string;
         ingredients: string[];
         steps: string[];
-        id: string;
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;
@@ -229,12 +285,14 @@ export declare class RecipesService {
         updatedAt: Date;
     }>;
     publishForUser(id: string, userId: string): Promise<{
+        id: string;
         title: string;
         ingredients: string[];
         steps: string[];
-        id: string;
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;
@@ -243,12 +301,14 @@ export declare class RecipesService {
         updatedAt: Date;
     }>;
     unpublishForUser(id: string, userId: string): Promise<{
+        id: string;
         title: string;
         ingredients: string[];
         steps: string[];
-        id: string;
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;

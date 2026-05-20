@@ -17,6 +17,7 @@ import {
   buildDishImagePrompt,
   fetchPollinationsDishImage,
 } from './dish-image-pollinations';
+import { parseCommaSeparatedFilter } from './feed-filters.util';
 
 export type AiGenerateRecipeResult = {
   recipe: Recipe;
@@ -39,7 +40,7 @@ export class RecipesService {
   async getPublishedFeedFacets() {
     const rows = await this.prisma.recipe.findMany({
       where: { isPublished: true },
-      select: { category: true, tags: true },
+      select: { category: true, tags: true, diet: true, restrictions: true },
     });
     const categories = [
       ...new Set(
@@ -51,7 +52,17 @@ export class RecipesService {
     const tags = [...new Set(rows.flatMap((r) => r.tags))].sort((a, b) =>
       a.localeCompare(b),
     );
-    return { categories, tags };
+    const diets = [
+      ...new Set(
+        rows
+          .map((r) => r.diet)
+          .filter((d): d is string => Boolean(d?.trim())),
+      ),
+    ].sort((a, b) => a.localeCompare(b));
+    const restrictions = [
+      ...new Set(rows.flatMap((r) => r.restrictions)),
+    ].sort((a, b) => a.localeCompare(b));
+    return { categories, tags, diets, restrictions };
   }
 
   /**
@@ -75,18 +86,28 @@ export class RecipesService {
           SELECT 1 FROM unnest(r.ingredients) AS ing(line)
           WHERE line ILIKE ${pattern}
         )
+        OR COALESCE(r.diet, '') ILIKE ${pattern}
+        OR EXISTS (
+          SELECT 1 FROM unnest(r.restrictions) AS res(line)
+          WHERE line ILIKE ${pattern}
+        )
       )
     `;
     return rows.map((r) => r.id);
   }
 
-  /** Comma-separated ingredient substrings → trimmed non-empty terms. */
-  private parseIngredientFilter(raw: string | undefined): string[] {
-    if (!raw?.trim()) return [];
-    return raw
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+  private normalizeDiet(raw?: string | null): string | null {
+    const t = raw?.trim().toLowerCase();
+    return t?.length ? t : null;
+  }
+
+  private normalizeRestrictionsList(raw?: string[] | null): string[] {
+    if (!raw?.length) return [];
+    return [
+      ...new Set(
+        raw.map((s) => String(s).trim().toLowerCase()).filter(Boolean),
+      ),
+    ];
   }
 
   /** Recipes where every term appears as a substring in at least one ingredient line. */
@@ -129,6 +150,26 @@ export class RecipesService {
     return rows.map((r) => r.id);
   }
 
+  /** Recipes where every term matches at least one restriction label (substring, case-insensitive). */
+  private async idsMatchingRestrictionsIncludeAll(
+    terms: string[],
+  ): Promise<string[]> {
+    if (terms.length === 0) return [];
+    const parts = terms.map(
+      (term) =>
+        Prisma.sql`EXISTS (
+          SELECT 1 FROM unnest(r.restrictions) AS res(line)
+          WHERE line ILIKE ${`%${term}%`}
+        )`,
+    );
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT r.id FROM "Recipe" r
+      WHERE r."isPublished" = true
+      AND ${Prisma.join(parts, ' AND ')}
+    `;
+    return rows.map((r) => r.id);
+  }
+
   /** Paginated public feed (`offset` + `limit`; `nextOffset` is null when no more pages). */
   async findPublishedFeed(
     currentUserId: string | undefined,
@@ -140,6 +181,8 @@ export class RecipesService {
       category?: string;
       includeIng?: string;
       excludeIng?: string;
+      diet?: string;
+      restriction?: string;
     },
   ) {
     const parts: Prisma.RecipeWhereInput[] = [{ isPublished: true }];
@@ -151,6 +194,10 @@ export class RecipesService {
     if (tag) {
       parts.push({ tags: { has: tag } });
     }
+    const dietTrim = params.diet?.trim().toLowerCase();
+    if (dietTrim) {
+      parts.push({ diet: { equals: dietTrim, mode: 'insensitive' } });
+    }
     const qTrim = params.q?.trim();
     if (qTrim) {
       const ids = await this.idsMatchingFeedTextSearch(qTrim);
@@ -159,7 +206,7 @@ export class RecipesService {
       }
       parts.push({ id: { in: ids } });
     }
-    const includeTerms = this.parseIngredientFilter(params.includeIng);
+    const includeTerms = parseCommaSeparatedFilter(params.includeIng);
     if (includeTerms.length > 0) {
       const ids = await this.idsMatchingIngredientIncludeAll(includeTerms);
       if (ids.length === 0) {
@@ -167,7 +214,7 @@ export class RecipesService {
       }
       parts.push({ id: { in: ids } });
     }
-    const excludeTerms = this.parseIngredientFilter(params.excludeIng);
+    const excludeTerms = parseCommaSeparatedFilter(params.excludeIng);
     if (excludeTerms.length > 0) {
       const excludeIds = await this.idsMatchingIngredientExcludeAny(
         excludeTerms,
@@ -175,6 +222,16 @@ export class RecipesService {
       if (excludeIds.length > 0) {
         parts.push({ id: { notIn: excludeIds } });
       }
+    }
+    const restrictionTerms = parseCommaSeparatedFilter(params.restriction);
+    if (restrictionTerms.length > 0) {
+      const ids = await this.idsMatchingRestrictionsIncludeAll(
+        restrictionTerms,
+      );
+      if (ids.length === 0) {
+        return { items: [], nextOffset: null };
+      }
+      parts.push({ id: { in: ids } });
     }
     const where: Prisma.RecipeWhereInput =
       parts.length === 1 ? parts[0] : { AND: parts };
@@ -189,7 +246,7 @@ export class RecipesService {
         skip: offset,
         take,
         include: {
-          user: { select: { name: true, avatarUrl: true } },
+          user: { select: { name: true, avatarUrl: true, isPremium: true } },
           _count: { select: { recipeLikes: true } },
           recipeLikes: {
             where: { userId: currentUserId },
@@ -220,7 +277,7 @@ export class RecipesService {
       skip: offset,
       take,
       include: {
-        user: { select: { name: true, avatarUrl: true } },
+        user: { select: { name: true, avatarUrl: true, isPremium: true } },
         _count: { select: { recipeLikes: true } },
       },
     });
@@ -241,13 +298,15 @@ export class RecipesService {
       steps: string[];
       category: string | null;
       tags: string[];
+      diet: string | null;
+      restrictions: string[];
       imageUrl: string | null;
       isAI: boolean;
       isPublished: boolean;
       userId: string;
       createdAt: Date;
       updatedAt: Date;
-      user: { name: string; avatarUrl: string | null };
+      user: { name: string; avatarUrl: string | null; isPremium: boolean };
       _count: { recipeLikes: number };
     },
     likedByMe: boolean,
@@ -260,6 +319,8 @@ export class RecipesService {
       steps: r.steps,
       category: r.category,
       tags: r.tags,
+      diet: r.diet,
+      restrictions: r.restrictions,
       imageUrl: r.imageUrl,
       isAI: r.isAI,
       isPublished: r.isPublished,
@@ -284,7 +345,7 @@ export class RecipesService {
       include: {
         recipe: {
           include: {
-            user: { select: { name: true, avatarUrl: true } },
+            user: { select: { name: true, avatarUrl: true, isPremium: true } },
             _count: { select: { recipeLikes: true } },
             recipeLikes: {
               where: { userId },
@@ -305,6 +366,8 @@ export class RecipesService {
         steps: r.steps,
         category: r.category,
         tags: r.tags,
+        diet: r.diet,
+        restrictions: r.restrictions,
         imageUrl: r.imageUrl,
         isAI: r.isAI,
         isPublished: r.isPublished,
@@ -330,7 +393,7 @@ export class RecipesService {
       include: {
         recipe: {
           include: {
-            user: { select: { name: true, avatarUrl: true } },
+            user: { select: { name: true, avatarUrl: true, isPremium: true } },
             _count: { select: { recipeLikes: true } },
             favorites: {
               where: { userId },
@@ -351,6 +414,8 @@ export class RecipesService {
         steps: r.steps,
         category: r.category,
         tags: r.tags,
+        diet: r.diet,
+        restrictions: r.restrictions,
         imageUrl: r.imageUrl,
         isAI: r.isAI,
         isPublished: r.isPublished,
@@ -445,6 +510,99 @@ export class RecipesService {
     return { savedByMe: false };
   }
 
+  /** Same visibility as GET /recipes/:id — published for everyone, draft for owner only. */
+  private async assertRecipeAccessibleForComments(
+    recipeId: string,
+    viewerUserId?: string,
+  ): Promise<{ id: string; userId: string; isPublished: boolean }> {
+    if (recipeId === 'favorites' || recipeId === 'my' || recipeId === 'liked') {
+      throw new NotFoundException('Recipe not found');
+    }
+    const recipe = await this.prisma.recipe.findUnique({
+      where: { id: recipeId },
+      select: { id: true, userId: true, isPublished: true },
+    });
+    if (!recipe) {
+      throw new NotFoundException(`Recipe with id ${recipeId} not found`);
+    }
+    if (!recipe.isPublished) {
+      if (!viewerUserId || recipe.userId !== viewerUserId) {
+        throw new ForbiddenException('This recipe is not published');
+      }
+    }
+    return recipe;
+  }
+
+  async listRecipeComments(recipeId: string, viewerUserId?: string) {
+    await this.assertRecipeAccessibleForComments(recipeId, viewerUserId);
+    const rows = await this.prisma.recipeComment.findMany({
+      where: { recipeId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        body: true,
+        createdAt: true,
+        userId: true,
+        user: { select: { name: true, avatarUrl: true } },
+      },
+    });
+    return rows.map((c) => ({
+      id: c.id,
+      body: c.body,
+      createdAt: c.createdAt,
+      userId: c.userId,
+      user: c.user,
+    }));
+  }
+
+  async createRecipeComment(
+    recipeId: string,
+    authorUserId: string,
+    body: string,
+  ) {
+    await this.assertRecipeAccessibleForComments(recipeId, authorUserId);
+    const text = body.trim();
+    if (!text.length) {
+      throw new BadRequestException('Comment cannot be empty');
+    }
+    return this.prisma.recipeComment.create({
+      data: {
+        recipeId,
+        userId: authorUserId,
+        body: text,
+      },
+      select: {
+        id: true,
+        body: true,
+        createdAt: true,
+        userId: true,
+        user: { select: { name: true, avatarUrl: true } },
+      },
+    });
+  }
+
+  async deleteRecipeComment(
+    recipeId: string,
+    commentId: string,
+    viewerUserId: string,
+  ) {
+    const comment = await this.prisma.recipeComment.findFirst({
+      where: { id: commentId, recipeId },
+      include: { recipe: { select: { userId: true } } },
+    });
+    if (!comment) {
+      throw new NotFoundException('Comment not found');
+    }
+    if (
+      comment.userId !== viewerUserId &&
+      comment.recipe.userId !== viewerUserId
+    ) {
+      throw new ForbiddenException('You cannot delete this comment');
+    }
+    await this.prisma.recipeComment.delete({ where: { id: commentId } });
+    return { deleted: true as const };
+  }
+
   findMine(userId: string) {
     return this.prisma.recipe.findMany({
       where: { userId },
@@ -463,7 +621,7 @@ export class RecipesService {
     const recipe = await this.prisma.recipe.findUnique({
       where: { id },
       include: {
-        user: { select: { name: true, avatarUrl: true } },
+        user: { select: { name: true, avatarUrl: true, isPremium: true } },
         _count: { select: { recipeLikes: true } },
         ...(viewerUserId
           ? {
@@ -504,6 +662,8 @@ export class RecipesService {
       steps: recipe.steps,
       category: recipe.category,
       tags: recipe.tags,
+      diet: recipe.diet,
+      restrictions: recipe.restrictions,
       imageUrl: recipe.imageUrl,
       isAI: recipe.isAI,
       isPublished: recipe.isPublished,
@@ -534,13 +694,15 @@ export class RecipesService {
         steps: string[];
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;
         userId: string;
         createdAt: Date;
         updatedAt: Date;
-        user: { name: string; avatarUrl: string | null };
+        user: { name: string; avatarUrl: string | null; isPremium: boolean };
         _count: { recipeLikes: number };
       },
       likedByMe: boolean,
@@ -552,6 +714,8 @@ export class RecipesService {
       steps: r.steps,
       category: r.category,
       tags: r.tags,
+      diet: r.diet,
+      restrictions: r.restrictions,
       imageUrl: r.imageUrl,
       isAI: r.isAI,
       isPublished: r.isPublished,
@@ -569,7 +733,7 @@ export class RecipesService {
         where,
         orderBy,
         include: {
-          user: { select: { name: true, avatarUrl: true } },
+          user: { select: { name: true, avatarUrl: true, isPremium: true } },
           _count: { select: { recipeLikes: true } },
           recipeLikes: {
             where: { userId: viewerUserId },
@@ -592,7 +756,7 @@ export class RecipesService {
       where,
       orderBy,
       include: {
-        user: { select: { name: true, avatarUrl: true } },
+        user: { select: { name: true, avatarUrl: true, isPremium: true } },
         _count: { select: { recipeLikes: true } },
       },
     });
@@ -603,6 +767,8 @@ export class RecipesService {
     const tags = (data.tags ?? [])
       .map((t) => t.trim().toLowerCase())
       .filter(Boolean);
+    const restrictions = this.normalizeRestrictionsList(data.restrictions);
+    const diet = this.normalizeDiet(data.diet);
     return this.prisma.recipe.create({
       data: {
         title: data.title,
@@ -611,6 +777,8 @@ export class RecipesService {
         isAI: data.isAI ?? false,
         category: data.category?.trim() || null,
         tags,
+        diet,
+        restrictions,
         userId,
       },
     });
@@ -659,6 +827,15 @@ export class RecipesService {
         .map((t) => t.trim().toLowerCase())
         .filter(Boolean);
     }
+    if (dto.diet !== undefined) {
+      data.diet =
+        dto.diet === null || !String(dto.diet).trim()
+          ? null
+          : this.normalizeDiet(dto.diet);
+    }
+    if (dto.restrictions !== undefined) {
+      data.restrictions = this.normalizeRestrictionsList(dto.restrictions);
+    }
 
     if (Object.keys(data).length === 0) {
       throw new BadRequestException('No changes provided');
@@ -671,14 +848,11 @@ export class RecipesService {
     input: AiGenerateRecipeDto,
     userId: string,
   ): Promise<AiGenerateRecipeResult> {
-    const aiCount = await this.prisma.recipe.count({
-      where: { userId, isAI: true },
-    });
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    if (aiCount >= 1 && !user.isPremium) {
+    if (!user.isPremium) {
       throw new BadRequestException('Upgrade to premium');
     }
 
@@ -686,6 +860,11 @@ export class RecipesService {
       ingredients: input.ingredients,
       dishType: input.dishType,
       complexity: input.complexity,
+      diet: this.normalizeDiet(input.diet) ?? undefined,
+      restrictions: this.normalizeRestrictionsList(input.restrictions),
+      avoidIngredients: (input.avoidIngredients ?? [])
+        .map((s) => String(s).trim().toLowerCase())
+        .filter(Boolean),
     });
 
     const dish = (input.dishType ?? 'general')
@@ -693,6 +872,10 @@ export class RecipesService {
       .toLowerCase()
       .replace(/\s+/g, '-');
     const aiTags = [dish, 'ai'].filter(Boolean);
+    const dietStored = this.normalizeDiet(input.diet);
+    const restrictionsStored = this.normalizeRestrictionsList(
+      input.restrictions,
+    );
     const recipe = await this.prisma.recipe.create({
       data: {
         title: generated.title,
@@ -701,6 +884,8 @@ export class RecipesService {
         isAI: true,
         category: input.dishType?.trim() || 'AI',
         tags: aiTags,
+        diet: dietStored,
+        restrictions: restrictionsStored,
         userId,
       },
     });

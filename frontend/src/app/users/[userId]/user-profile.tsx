@@ -3,15 +3,29 @@
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { PageHeader, PageShell } from "@/components/layout";
 import { RecipeFeedCard } from "@/components/recipe/recipe-feed-card";
+import { PremiumBadge } from "@/components/user/premium-badge";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { getApiBaseUrl } from "@/lib/api-config";
 import { fetchWithAuth } from "@/lib/api-fetch";
+import { cn } from "@/lib/utils";
 import type { FeedRecipe } from "@/types/recipe";
 
-type PublicUser = { id: string; name: string; avatarUrl: string | null };
+type PublicUser = {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  isPremium: boolean;
+};
+
+type MessageRelationshipStatus = {
+  blockedByMe: boolean;
+  blockedMe: boolean;
+};
 
 function normalizeFeedItem(raw: FeedRecipe): FeedRecipe {
   return {
@@ -26,6 +40,7 @@ function normalizeFeedItem(raw: FeedRecipe): FeedRecipe {
     user: {
       name: raw.user?.name ?? "",
       avatarUrl: raw.user?.avatarUrl ?? null,
+      isPremium: Boolean(raw.user?.isPremium),
     },
   };
 }
@@ -39,6 +54,10 @@ export function UserProfile({ userId }: { userId: string }) {
   const [togglingLikeId, setTogglingLikeId] = useState<string | null>(null);
   const [togglingSaveId, setTogglingSaveId] = useState<string | null>(null);
   const [myDbUserId, setMyDbUserId] = useState<string | null>(null);
+  const [messageStatus, setMessageStatus] = useState<MessageRelationshipStatus | null>(
+    null,
+  );
+  const [blocking, setBlocking] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -75,6 +94,7 @@ export function UserProfile({ userId }: { userId: string }) {
           p.avatarUrl === null || p.avatarUrl === undefined
             ? null
             : String(p.avatarUrl),
+        isPremium: Boolean(p.isPremium),
       });
 
       const rData: unknown = await rRes.json().catch(() => null);
@@ -116,6 +136,57 @@ export function UserProfile({ userId }: { userId: string }) {
       }
     })();
   }, [getToken, isLoaded, isSignedIn]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !myDbUserId || myDbUserId === userId) {
+      setMessageStatus(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const res = await fetchWithAuth(
+          `${getApiBaseUrl()}/messages/users/${encodeURIComponent(userId)}/status`,
+          { method: "GET" },
+          getToken,
+        );
+        const data = (await res.json().catch(() => null)) as
+          | MessageRelationshipStatus
+          | null;
+        if (res.ok && data) {
+          setMessageStatus({
+            blockedByMe: Boolean(data.blockedByMe),
+            blockedMe: Boolean(data.blockedMe),
+          });
+        } else {
+          setMessageStatus({ blockedByMe: false, blockedMe: false });
+        }
+      } catch {
+        setMessageStatus({ blockedByMe: false, blockedMe: false });
+      }
+    })();
+  }, [getToken, isLoaded, isSignedIn, myDbUserId, userId]);
+
+  async function toggleBlock(shouldBlock: boolean) {
+    setBlocking(true);
+    try {
+      const res = await fetchWithAuth(
+        `${getApiBaseUrl()}/messages/users/${encodeURIComponent(userId)}/block`,
+        { method: shouldBlock ? "POST" : "DELETE" },
+        getToken,
+      );
+      const data = (await res.json().catch(() => null)) as
+        | MessageRelationshipStatus
+        | null;
+      if (res.ok && data) {
+        setMessageStatus({
+          blockedByMe: Boolean(data.blockedByMe),
+          blockedMe: Boolean(data.blockedMe),
+        });
+      }
+    } finally {
+      setBlocking(false);
+    }
+  }
 
   async function toggleLike(recipe: FeedRecipe) {
     if (!isSignedIn) {
@@ -289,6 +360,46 @@ export function UserProfile({ userId }: { userId: string }) {
                 {(profile?.name ?? "?").slice(0, 1).toUpperCase()}
               </div>
             )}
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-xl font-semibold tracking-tight">
+                {profile?.name ?? "Profile"}
+              </h2>
+              {profile?.isPremium ? <PremiumBadge /> : null}
+              {!isMe && !messageStatus?.blockedByMe && !messageStatus?.blockedMe ? (
+                <Link
+                  href={isSignedIn ? `/messages?with=${userId}` : "/sign-in"}
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "gap-2",
+                  )}
+                >
+                  <Send className="size-4" aria-hidden />
+                  Message
+                </Link>
+              ) : null}
+              {!isMe && isSignedIn ? (
+                <button
+                  type="button"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "gap-2",
+                  )}
+                  disabled={blocking}
+                  onClick={() => void toggleBlock(!messageStatus?.blockedByMe)}
+                >
+                  {blocking
+                    ? "Updating…"
+                    : messageStatus?.blockedByMe
+                      ? "Unblock"
+                      : "Block"}
+                </button>
+              ) : null}
+              {!isMe && messageStatus?.blockedMe ? (
+                <span className="text-xs text-amber-700 dark:text-amber-300">
+                  This user blocked you
+                </span>
+              ) : null}
+            </div>
           </div>
 
           {(recipes ?? []).length === 0 ? (

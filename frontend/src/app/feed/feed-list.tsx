@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -36,12 +37,20 @@ function normalizeFeedItem(raw: FeedRecipe): FeedRecipe {
     tags: Array.isArray(raw.tags)
       ? raw.tags.map((t) => String(t).toLowerCase())
       : [],
+    diet:
+      raw.diet === null || raw.diet === undefined
+        ? null
+        : String(raw.diet),
+    restrictions: Array.isArray(raw.restrictions)
+      ? raw.restrictions.map((x) => String(x).toLowerCase())
+      : [],
     likesCount: typeof raw.likesCount === "number" ? raw.likesCount : 0,
     likedByMe: Boolean(raw.likedByMe),
     savedByMe: Boolean(raw.savedByMe),
     user: {
       name: raw.user?.name ?? "",
       avatarUrl: raw.user?.avatarUrl ?? null,
+      isPremium: Boolean(raw.user?.isPremium),
     },
   };
 }
@@ -54,6 +63,8 @@ function feedQueryString(
     category: string;
     includeIng: string;
     excludeIng: string;
+    diet: string;
+    restriction: string;
   },
 ): string {
   const p = new URLSearchParams();
@@ -65,6 +76,8 @@ function feedQueryString(
   if (opts.category.trim()) p.set("category", opts.category.trim());
   if (opts.includeIng.trim()) p.set("includeIng", opts.includeIng.trim());
   if (opts.excludeIng.trim()) p.set("excludeIng", opts.excludeIng.trim());
+  if (opts.diet.trim()) p.set("diet", opts.diet.trim().toLowerCase());
+  if (opts.restriction.trim()) p.set("restriction", opts.restriction.trim());
   return p.toString();
 }
 
@@ -77,6 +90,8 @@ export function FeedList() {
   const categoryUrl = searchParams.get("category") ?? "";
   const includeIngUrl = searchParams.get("includeIng") ?? "";
   const excludeIngUrl = searchParams.get("excludeIng") ?? "";
+  const dietUrl = searchParams.get("diet") ?? "";
+  const restrictionUrl = searchParams.get("restriction") ?? "";
 
   const [recipes, setRecipes] = useState<FeedRecipe[] | null>(null);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
@@ -89,9 +104,13 @@ export function FeedList() {
   const [qInput, setQInput] = useState(qUrl);
   const [includeIngInput, setIncludeIngInput] = useState(includeIngUrl);
   const [excludeIngInput, setExcludeIngInput] = useState(excludeIngUrl);
+  const [restrictionInput, setRestrictionInput] = useState(restrictionUrl);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [facets, setFacets] = useState<{
     categories: string[];
     tags: string[];
+    diets: string[];
+    restrictions: string[];
   } | null>(null);
 
   useEffect(() => {
@@ -107,14 +126,20 @@ export function FeedList() {
   }, [excludeIngUrl]);
 
   useEffect(() => {
+    setRestrictionInput(restrictionUrl);
+  }, [restrictionUrl]);
+
+  useEffect(() => {
     const id = setTimeout(() => {
       const nextQ = qInput.trim();
       const nextInc = includeIngInput.trim();
       const nextExc = excludeIngInput.trim();
+      const nextRest = restrictionInput.trim();
       if (
         nextQ === qUrl.trim() &&
         nextInc === includeIngUrl.trim() &&
-        nextExc === excludeIngUrl.trim()
+        nextExc === excludeIngUrl.trim() &&
+        nextRest === restrictionUrl.trim()
       ) {
         return;
       }
@@ -122,8 +147,10 @@ export function FeedList() {
       if (nextQ) p.set("q", nextQ);
       if (tagUrl.trim()) p.set("tag", tagUrl.trim());
       if (categoryUrl.trim()) p.set("category", categoryUrl.trim());
+      if (dietUrl.trim()) p.set("diet", dietUrl.trim().toLowerCase());
       if (nextInc) p.set("includeIng", nextInc);
       if (nextExc) p.set("excludeIng", nextExc);
+      if (nextRest) p.set("restriction", nextRest);
       router.replace(`/feed?${p.toString()}`);
     }, 380);
     return () => clearTimeout(id);
@@ -131,11 +158,14 @@ export function FeedList() {
     qInput,
     includeIngInput,
     excludeIngInput,
+    restrictionInput,
     qUrl,
     includeIngUrl,
     excludeIngUrl,
+    restrictionUrl,
     tagUrl,
     categoryUrl,
+    dietUrl,
     router,
   ]);
 
@@ -149,15 +179,22 @@ export function FeedList() {
         const data = (await res.json().catch(() => null)) as {
           categories?: string[];
           tags?: string[];
+          diets?: string[];
+          restrictions?: string[];
         } | null;
         if (!cancelled && data) {
           setFacets({
             categories: Array.isArray(data.categories) ? data.categories : [],
             tags: Array.isArray(data.tags) ? data.tags : [],
+            diets: Array.isArray(data.diets) ? data.diets : [],
+            restrictions: Array.isArray(data.restrictions)
+              ? data.restrictions
+              : [],
           });
         }
       } catch {
-        if (!cancelled) setFacets({ categories: [], tags: [] });
+        if (!cancelled)
+          setFacets({ categories: [], tags: [], diets: [], restrictions: [] });
       }
     })();
     return () => {
@@ -183,6 +220,34 @@ export function FeedList() {
     ];
   }, [facets]);
 
+  const dietOptions = useMemo(() => {
+    const list = [...(facets?.diets ?? [])].sort((a, b) => a.localeCompare(b));
+    return [
+      { value: "", label: "Any diet" },
+      ...list.map((d) => ({ value: d, label: d })),
+    ];
+  }, [facets]);
+
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (qUrl.trim()) n += 1;
+    if (tagUrl.trim()) n += 1;
+    if (categoryUrl.trim()) n += 1;
+    if (dietUrl.trim()) n += 1;
+    if (includeIngUrl.trim()) n += 1;
+    if (excludeIngUrl.trim()) n += 1;
+    if (restrictionUrl.trim()) n += 1;
+    return n;
+  }, [
+    qUrl,
+    tagUrl,
+    categoryUrl,
+    dietUrl,
+    includeIngUrl,
+    excludeIngUrl,
+    restrictionUrl,
+  ]);
+
   function replaceFeedQuery(
     partial: Partial<{
       q: string;
@@ -190,6 +255,8 @@ export function FeedList() {
       category: string;
       includeIng: string;
       excludeIng: string;
+      diet: string;
+      restriction: string;
     }>,
   ) {
     const p = new URLSearchParams();
@@ -204,11 +271,17 @@ export function FeedList() {
     const ev = (
       partial.excludeIng !== undefined ? partial.excludeIng : excludeIngUrl
     ).trim();
+    const dv = (partial.diet !== undefined ? partial.diet : dietUrl).trim();
+    const rv = (
+      partial.restriction !== undefined ? partial.restriction : restrictionUrl
+    ).trim();
     if (qv) p.set("q", qv);
     if (tv) p.set("tag", tv.toLowerCase());
     if (cv) p.set("category", cv);
+    if (dv) p.set("diet", dv.toLowerCase());
     if (iv) p.set("includeIng", iv);
     if (ev) p.set("excludeIng", ev);
+    if (rv) p.set("restriction", rv);
     router.replace(`/feed?${p.toString()}`);
   }
 
@@ -244,6 +317,8 @@ export function FeedList() {
           category: categoryUrl,
           includeIng: includeIngUrl,
           excludeIng: excludeIngUrl,
+          diet: dietUrl,
+          restriction: restrictionUrl,
         });
         const url = `${getApiBaseUrl()}/recipes?${qs}`;
         const res = isSignedIn
@@ -292,6 +367,8 @@ export function FeedList() {
       categoryUrl,
       includeIngUrl,
       excludeIngUrl,
+      dietUrl,
+      restrictionUrl,
     ],
   );
 
@@ -309,6 +386,8 @@ export function FeedList() {
     categoryUrl,
     includeIngUrl,
     excludeIngUrl,
+    dietUrl,
+    restrictionUrl,
   ]);
 
   useEffect(() => {
@@ -465,7 +544,50 @@ export function FeedList() {
         description="Published recipes from the community — scroll for more, like and save posts."
       />
 
-      <div className="mb-6 space-y-4">
+      <div className="mb-6 overflow-hidden rounded-xl border border-border bg-muted/25">
+        <button
+          type="button"
+          id="feed-filters-toggle"
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50"
+          aria-expanded={filtersOpen}
+          aria-controls="feed-filters-panel"
+          onClick={() => setFiltersOpen((v) => !v)}
+        >
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-foreground">
+              Search & filters
+            </span>
+            {activeFilterCount > 0 ? (
+              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
+                {activeFilterCount} active
+              </span>
+            ) : null}
+            <span className="text-xs font-normal text-muted-foreground">
+              {!filtersOpen ? "Tap to expand" : "Tap to hide"}
+            </span>
+          </span>
+          {filtersOpen ? (
+            <ChevronUp
+              className="size-5 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+          ) : (
+            <ChevronDown
+              className="size-5 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+          )}
+        </button>
+
+        <div
+          id="feed-filters-panel"
+          role="region"
+          aria-labelledby="feed-filters-toggle"
+          className={filtersOpen ? "space-y-4 border-t border-border px-4 pb-4 pt-4" : "hidden"}
+        >
+        <p className="text-xs text-muted-foreground">
+          Feed order: <span className="font-medium text-foreground">newest first</span>.
+        </p>
         <div className="min-w-0 space-y-1.5">
           <label htmlFor="feed-search" className="text-xs font-medium text-muted-foreground">
             Search
@@ -473,7 +595,7 @@ export function FeedList() {
           <Input
             id="feed-search"
             type="search"
-            placeholder="Search title, tags, ingredients…"
+            placeholder="Search title, diet, restrictions, tags, ingredients…"
             value={qInput}
             onChange={(e) => setQInput(e.target.value)}
             className="w-full md:max-w-xl"
@@ -565,11 +687,29 @@ export function FeedList() {
               placeholder="All tags"
             />
           </div>
+          <div className="min-w-0 w-full sm:min-w-42 sm:max-w-[min(100%,16rem)] sm:flex-1">
+            <label
+              htmlFor="feed-filter-diet"
+              className="mb-1.5 block text-xs font-medium text-muted-foreground"
+            >
+              Diet
+            </label>
+            <CustomMenuSelect
+              id="feed-filter-diet"
+              value={dietUrl}
+              onChange={(v) => replaceFeedQuery({ diet: v })}
+              options={dietOptions}
+              listboxAriaLabel="Diet list"
+              placeholder="Any diet"
+            />
+          </div>
           {qUrl ||
           tagUrl ||
           categoryUrl ||
+          dietUrl ||
           includeIngUrl ||
-          excludeIngUrl ? (
+          excludeIngUrl ||
+          restrictionUrl ? (
             <button
               type="button"
               className="h-9 w-full shrink-0 rounded-md border border-border bg-muted/40 px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:w-auto sm:self-end"
@@ -577,6 +717,7 @@ export function FeedList() {
                 setQInput("");
                 setIncludeIngInput("");
                 setExcludeIngInput("");
+                setRestrictionInput("");
                 router.replace("/feed");
               }}
             >
@@ -584,6 +725,33 @@ export function FeedList() {
             </button>
           ) : null}
         </div>
+
+        <div className="min-w-0 space-y-1.5">
+          <label
+            htmlFor="feed-restriction"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            Match dietary labels
+          </label>
+          <Input
+            id="feed-restriction"
+            type="text"
+            placeholder="e.g. gluten-free, dairy-free"
+            value={restrictionInput}
+            onChange={(e) => setRestrictionInput(e.target.value)}
+            className="w-full max-w-xl"
+            autoComplete="off"
+            aria-describedby="feed-restriction-hint"
+          />
+          <p
+            id="feed-restriction-hint"
+            className="text-[0.7rem] leading-snug text-muted-foreground sm:text-xs"
+          >
+            Comma-separated — recipe must list every term in its dietary
+            restrictions (substring match).
+          </p>
+        </div>
+      </div>
       </div>
 
       {error ? (

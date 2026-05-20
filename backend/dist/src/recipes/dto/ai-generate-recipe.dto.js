@@ -16,6 +16,9 @@ class AiGenerateRecipeDto {
     ingredients;
     dishType;
     complexity;
+    diet;
+    restrictions;
+    avoidIngredients;
     generateImage;
 }
 exports.AiGenerateRecipeDto = AiGenerateRecipeDto;
@@ -35,6 +38,23 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], AiGenerateRecipeDto.prototype, "complexity", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], AiGenerateRecipeDto.prototype, "diet", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsString)({ each: true }),
+    __metadata("design:type", Array)
+], AiGenerateRecipeDto.prototype, "restrictions", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsString)({ each: true }),
+    __metadata("design:type", Array)
+], AiGenerateRecipeDto.prototype, "avoidIngredients", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsBoolean)(),

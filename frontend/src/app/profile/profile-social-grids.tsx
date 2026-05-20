@@ -26,6 +26,7 @@ function normalize(raw: FeedRecipe): FeedRecipe {
     user: {
       name: raw.user?.name ?? "",
       avatarUrl: raw.user?.avatarUrl ?? null,
+      isPremium: Boolean(raw.user?.isPremium),
     },
   };
 }

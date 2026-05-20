@@ -18,6 +18,9 @@ export type AiRecipeFormValues = {
   ingredients: string;
   dishType: string;
   complexity: string;
+  diet: string;
+  restrictions: string;
+  avoidIngredients: string;
 };
 
 type AiRecipeFormCardProps = {
@@ -99,6 +102,48 @@ export function AiRecipeFormCard({
               <option value="medium" />
               <option value="hard" />
             </datalist>
+          </FormField>
+
+          <FormField
+            id="ai-diet"
+            label="Diet"
+            hint="Optional — stored on the recipe (e.g. vegan)."
+          >
+            <Input
+              id="ai-diet"
+              placeholder="e.g. vegan, keto"
+              value={values.diet}
+              onChange={(e) => onChange('diet', e.target.value)}
+              disabled={busy}
+            />
+          </FormField>
+
+          <FormField
+            id="ai-restrictions"
+            label="Dietary restrictions"
+            hint="Comma-separated labels stored on the recipe."
+          >
+            <Input
+              id="ai-restrictions"
+              placeholder="gluten-free, nut-free"
+              value={values.restrictions}
+              onChange={(e) => onChange('restrictions', e.target.value)}
+              disabled={busy}
+            />
+          </FormField>
+
+          <FormField
+            id="ai-avoid"
+            label="Avoid ingredients"
+            hint="Comma-separated — passed to the model only (not stored as a list)."
+          >
+            <Input
+              id="ai-avoid"
+              placeholder="e.g. shellfish, peanuts, dairy"
+              value={values.avoidIngredients}
+              onChange={(e) => onChange('avoidIngredients', e.target.value)}
+              disabled={busy}
+            />
           </FormField>
 
           <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">

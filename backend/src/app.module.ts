@@ -5,6 +5,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthMiddleware } from './auth/auth.middleware';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { MessagesModule } from './messages/messages.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RecipesModule } from './recipes/recipes.module';
@@ -21,6 +22,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     PrismaModule,
     UsersModule,
     RecipesModule,
+    MessagesModule,
     WebhooksModule,
     PaymentsModule,
   ],

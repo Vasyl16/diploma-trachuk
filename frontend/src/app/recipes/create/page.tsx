@@ -34,6 +34,10 @@ export default function CreateRecipePage() {
           isAI: false,
           category: values.category || undefined,
           tags: values.tags.length ? values.tags : undefined,
+          diet: values.diet.trim() || undefined,
+          restrictions: values.restrictions.length
+            ? values.restrictions
+            : undefined,
         }),
       },
       getToken,

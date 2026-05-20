@@ -21,6 +21,8 @@ export type RecipeManualFormValues = {
   steps: string[];
   category: string;
   tags: string[];
+  diet: string;
+  restrictions: string[];
 };
 
 function splitLines(text: string): string[] {
@@ -44,6 +46,8 @@ type RecipeManualFormProps = {
   defaultStepsText?: string;
   defaultCategory?: string;
   defaultTagsText?: string;
+  defaultDiet?: string;
+  defaultRestrictionsText?: string;
   onSubmit: (
     values: RecipeManualFormValues,
     imageFile: File | null,
@@ -57,6 +61,8 @@ export function RecipeManualForm({
   defaultStepsText = "",
   defaultCategory = "",
   defaultTagsText = "",
+  defaultDiet = "",
+  defaultRestrictionsText = "",
   onSubmit,
 }: RecipeManualFormProps) {
   const [title, setTitle] = useState(defaultTitle);
@@ -64,6 +70,8 @@ export function RecipeManualForm({
   const [stepsText, setStepsText] = useState(defaultStepsText);
   const [category, setCategory] = useState(defaultCategory);
   const [tagsText, setTagsText] = useState(defaultTagsText);
+  const [diet, setDiet] = useState(defaultDiet);
+  const [restrictionsText, setRestrictionsText] = useState(defaultRestrictionsText);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +102,8 @@ export function RecipeManualForm({
           steps,
           category: category.trim(),
           tags: splitTags(tagsText),
+          diet: diet.trim().toLowerCase(),
+          restrictions: splitTags(restrictionsText),
         },
         imageFile,
       );
@@ -167,6 +177,40 @@ export function RecipeManualForm({
               onChange={(e) => setTagsText(e.target.value)}
               disabled={loading}
               placeholder="pasta, quick, vegetarian"
+            />
+          </FormField>
+          <FormField
+            id="diet"
+            label="Diet"
+            hint="Optional — e.g. vegan, vegetarian, keto."
+          >
+            <Input
+              id="diet"
+              value={diet}
+              onChange={(e) => setDiet(e.target.value)}
+              disabled={loading}
+              placeholder="e.g. vegan"
+              list="diet-suggestions"
+            />
+            <datalist id="diet-suggestions">
+              <option value="vegan" />
+              <option value="vegetarian" />
+              <option value="pescatarian" />
+              <option value="keto" />
+              <option value="omnivore" />
+            </datalist>
+          </FormField>
+          <FormField
+            id="restrictions"
+            label="Dietary restrictions"
+            hint="Comma-separated labels on the recipe (e.g. gluten-free, nut-free)."
+          >
+            <Input
+              id="restrictions"
+              value={restrictionsText}
+              onChange={(e) => setRestrictionsText(e.target.value)}
+              disabled={loading}
+              placeholder="gluten-free, dairy-free"
             />
           </FormField>
           <FormField id="image" label="Dish image" hint="Optional.">

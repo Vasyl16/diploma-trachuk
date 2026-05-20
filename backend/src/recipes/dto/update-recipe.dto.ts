@@ -1,4 +1,4 @@
-import { ArrayNotEmpty, IsArray, IsOptional, IsString } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsOptional, IsString, ValidateIf } from 'class-validator';
 
 export class UpdateRecipeDto {
   @IsOptional()
@@ -25,4 +25,14 @@ export class UpdateRecipeDto {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsString()
+  diet?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  restrictions?: string[];
 }

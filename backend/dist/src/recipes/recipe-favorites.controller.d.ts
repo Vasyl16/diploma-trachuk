@@ -10,6 +10,8 @@ export declare class RecipeFavoritesController {
         steps: string[];
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;
@@ -19,6 +21,7 @@ export declare class RecipeFavoritesController {
         user: {
             name: string;
             avatarUrl: string | null;
+            isPremium: boolean;
         };
         likesCount: number;
         likedByMe: boolean;
@@ -31,6 +34,8 @@ export declare class RecipeFavoritesController {
         steps: string[];
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;
@@ -40,6 +45,7 @@ export declare class RecipeFavoritesController {
         user: {
             name: string;
             avatarUrl: string | null;
+            isPremium: boolean;
         };
         likesCount: number;
         likedByMe: boolean;
@@ -52,6 +58,8 @@ export declare class RecipeFavoritesController {
         steps: string[];
         category: string | null;
         tags: string[];
+        diet: string | null;
+        restrictions: string[];
         imageUrl: string | null;
         isAI: boolean;
         isPublished: boolean;
@@ -61,6 +69,7 @@ export declare class RecipeFavoritesController {
         user: {
             name: string;
             avatarUrl: string | null;
+            isPremium: boolean;
         };
         likesCount: number;
         likedByMe: boolean;

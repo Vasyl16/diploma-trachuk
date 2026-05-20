@@ -19,6 +19,8 @@ class CreateRecipeDto {
     isAI;
     category;
     tags;
+    diet;
+    restrictions;
 }
 exports.CreateRecipeDto = CreateRecipeDto;
 __decorate([
@@ -55,4 +57,15 @@ __decorate([
     (0, class_validator_1.IsString)({ each: true }),
     __metadata("design:type", Array)
 ], CreateRecipeDto.prototype, "tags", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], CreateRecipeDto.prototype, "diet", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsString)({ each: true }),
+    __metadata("design:type", Array)
+], CreateRecipeDto.prototype, "restrictions", void 0);
 //# sourceMappingURL=create-recipe.dto.js.map

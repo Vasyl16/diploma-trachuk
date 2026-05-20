@@ -22,6 +22,8 @@ type RecipePayload = {
   steps: string[];
   category?: string | null;
   tags?: string[];
+  diet?: string | null;
+  restrictions?: string[];
   userId: string;
 };
 
@@ -87,6 +89,11 @@ export default function EditRecipePage() {
             ? null
             : String(o.category),
         tags: Array.isArray(o.tags) ? (o.tags as string[]) : [],
+        diet:
+          o.diet === null || o.diet === undefined ? null : String(o.diet),
+        restrictions: Array.isArray(o.restrictions)
+          ? (o.restrictions as string[])
+          : [],
         userId: String(o.userId ?? ""),
       });
     } catch {
@@ -115,6 +122,8 @@ export default function EditRecipePage() {
           steps: values.steps,
           category: values.category.trim(),
           tags: values.tags,
+          diet: values.diet.trim().toLowerCase() || null,
+          restrictions: values.restrictions,
         }),
       },
       getToken,
@@ -189,6 +198,8 @@ export default function EditRecipePage() {
         defaultStepsText={recipe.steps.join("\n")}
         defaultCategory={recipe.category ?? ""}
         defaultTagsText={(recipe.tags ?? []).join(", ")}
+        defaultDiet={recipe.diet ?? ""}
+        defaultRestrictionsText={(recipe.restrictions ?? []).join(", ")}
         onSubmit={handleSubmit}
       />
     </PageShell>

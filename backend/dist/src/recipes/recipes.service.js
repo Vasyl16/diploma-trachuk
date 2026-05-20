@@ -33,7 +33,7 @@ let RecipesService = RecipesService_1 = class RecipesService {
     async getPublishedFeedFacets() {
         const rows = await this.prisma.recipe.findMany({
             where: { isPublished: true },
-            select: { category: true, tags: true },
+            select: { category: true, tags: true, diet: true, restrictions: true },
         });
         const categories = [
             ...new Set(rows
@@ -41,7 +41,15 @@ let RecipesService = RecipesService_1 = class RecipesService {
                 .filter((c) => Boolean(c?.trim()))),
         ].sort((a, b) => a.localeCompare(b));
         const tags = [...new Set(rows.flatMap((r) => r.tags))].sort((a, b) => a.localeCompare(b));
-        return { categories, tags };
+        const diets = [
+            ...new Set(rows
+                .map((r) => r.diet)
+                .filter((d) => Boolean(d?.trim()))),
+        ].sort((a, b) => a.localeCompare(b));
+        const restrictions = [
+            ...new Set(rows.flatMap((r) => r.restrictions)),
+        ].sort((a, b) => a.localeCompare(b));
+        return { categories, tags, diets, restrictions };
     }
     async idsMatchingFeedTextSearch(q) {
         const trimmed = q.trim();
@@ -62,6 +70,11 @@ let RecipesService = RecipesService_1 = class RecipesService {
           SELECT 1 FROM unnest(r.ingredients) AS ing(line)
           WHERE line ILIKE ${pattern}
         )
+        OR COALESCE(r.diet, '') ILIKE ${pattern}
+        OR EXISTS (
+          SELECT 1 FROM unnest(r.restrictions) AS res(line)
+          WHERE line ILIKE ${pattern}
+        )
       )
     `;
         return rows.map((r) => r.id);
@@ -73,6 +86,17 @@ let RecipesService = RecipesService_1 = class RecipesService {
             .split(',')
             .map((s) => s.trim())
             .filter((s) => s.length > 0);
+    }
+    normalizeDiet(raw) {
+        const t = raw?.trim().toLowerCase();
+        return t?.length ? t : null;
+    }
+    normalizeRestrictionsList(raw) {
+        if (!raw?.length)
+            return [];
+        return [
+            ...new Set(raw.map((s) => String(s).trim().toLowerCase()).filter(Boolean)),
+        ];
     }
     async idsMatchingIngredientIncludeAll(terms) {
         if (terms.length === 0)
@@ -102,6 +126,20 @@ let RecipesService = RecipesService_1 = class RecipesService {
     `;
         return rows.map((r) => r.id);
     }
+    async idsMatchingRestrictionsIncludeAll(terms) {
+        if (terms.length === 0)
+            return [];
+        const parts = terms.map((term) => client_1.Prisma.sql `EXISTS (
+          SELECT 1 FROM unnest(r.restrictions) AS res(line)
+          WHERE line ILIKE ${`%${term}%`}
+        )`);
+        const rows = await this.prisma.$queryRaw `
+      SELECT r.id FROM "Recipe" r
+      WHERE r."isPublished" = true
+      AND ${client_1.Prisma.join(parts, ' AND ')}
+    `;
+        return rows.map((r) => r.id);
+    }
     async findPublishedFeed(currentUserId, params) {
         const parts = [{ isPublished: true }];
         const cat = params.category?.trim();
@@ -111,6 +149,10 @@ let RecipesService = RecipesService_1 = class RecipesService {
         const tag = params.tag?.trim().toLowerCase();
         if (tag) {
             parts.push({ tags: { has: tag } });
+        }
+        const dietTrim = params.diet?.trim().toLowerCase();
+        if (dietTrim) {
+            parts.push({ diet: { equals: dietTrim, mode: 'insensitive' } });
         }
         const qTrim = params.q?.trim();
         if (qTrim) {
@@ -135,6 +177,14 @@ let RecipesService = RecipesService_1 = class RecipesService {
                 parts.push({ id: { notIn: excludeIds } });
             }
         }
+        const restrictionTerms = this.parseIngredientFilter(params.restriction);
+        if (restrictionTerms.length > 0) {
+            const ids = await this.idsMatchingRestrictionsIncludeAll(restrictionTerms);
+            if (ids.length === 0) {
+                return { items: [], nextOffset: null };
+            }
+            parts.push({ id: { in: ids } });
+        }
         const where = parts.length === 1 ? parts[0] : { AND: parts };
         const orderBy = [{ createdAt: 'desc' }, { id: 'desc' }];
         const { offset, limit } = params;
@@ -146,7 +196,7 @@ let RecipesService = RecipesService_1 = class RecipesService {
                 skip: offset,
                 take,
                 include: {
-                    user: { select: { name: true, avatarUrl: true } },
+                    user: { select: { name: true, avatarUrl: true, isPremium: true } },
                     _count: { select: { recipeLikes: true } },
                     recipeLikes: {
                         where: { userId: currentUserId },
@@ -174,7 +224,7 @@ let RecipesService = RecipesService_1 = class RecipesService {
             skip: offset,
             take,
             include: {
-                user: { select: { name: true, avatarUrl: true } },
+                user: { select: { name: true, avatarUrl: true, isPremium: true } },
                 _count: { select: { recipeLikes: true } },
             },
         });
@@ -194,6 +244,8 @@ let RecipesService = RecipesService_1 = class RecipesService {
             steps: r.steps,
             category: r.category,
             tags: r.tags,
+            diet: r.diet,
+            restrictions: r.restrictions,
             imageUrl: r.imageUrl,
             isAI: r.isAI,
             isPublished: r.isPublished,
@@ -216,7 +268,7 @@ let RecipesService = RecipesService_1 = class RecipesService {
             include: {
                 recipe: {
                     include: {
-                        user: { select: { name: true, avatarUrl: true } },
+                        user: { select: { name: true, avatarUrl: true, isPremium: true } },
                         _count: { select: { recipeLikes: true } },
                         recipeLikes: {
                             where: { userId },
@@ -236,6 +288,8 @@ let RecipesService = RecipesService_1 = class RecipesService {
                 steps: r.steps,
                 category: r.category,
                 tags: r.tags,
+                diet: r.diet,
+                restrictions: r.restrictions,
                 imageUrl: r.imageUrl,
                 isAI: r.isAI,
                 isPublished: r.isPublished,
@@ -259,7 +313,7 @@ let RecipesService = RecipesService_1 = class RecipesService {
             include: {
                 recipe: {
                     include: {
-                        user: { select: { name: true, avatarUrl: true } },
+                        user: { select: { name: true, avatarUrl: true, isPremium: true } },
                         _count: { select: { recipeLikes: true } },
                         favorites: {
                             where: { userId },
@@ -279,6 +333,8 @@ let RecipesService = RecipesService_1 = class RecipesService {
                 steps: r.steps,
                 category: r.category,
                 tags: r.tags,
+                diet: r.diet,
+                restrictions: r.restrictions,
                 imageUrl: r.imageUrl,
                 isAI: r.isAI,
                 isPublished: r.isPublished,
@@ -366,6 +422,81 @@ let RecipesService = RecipesService_1 = class RecipesService {
         });
         return { savedByMe: false };
     }
+    async assertRecipeAccessibleForComments(recipeId, viewerUserId) {
+        if (recipeId === 'favorites' || recipeId === 'my' || recipeId === 'liked') {
+            throw new common_1.NotFoundException('Recipe not found');
+        }
+        const recipe = await this.prisma.recipe.findUnique({
+            where: { id: recipeId },
+            select: { id: true, userId: true, isPublished: true },
+        });
+        if (!recipe) {
+            throw new common_1.NotFoundException(`Recipe with id ${recipeId} not found`);
+        }
+        if (!recipe.isPublished) {
+            if (!viewerUserId || recipe.userId !== viewerUserId) {
+                throw new common_1.ForbiddenException('This recipe is not published');
+            }
+        }
+        return recipe;
+    }
+    async listRecipeComments(recipeId, viewerUserId) {
+        await this.assertRecipeAccessibleForComments(recipeId, viewerUserId);
+        const rows = await this.prisma.recipeComment.findMany({
+            where: { recipeId },
+            orderBy: { createdAt: 'asc' },
+            select: {
+                id: true,
+                body: true,
+                createdAt: true,
+                userId: true,
+                user: { select: { name: true, avatarUrl: true } },
+            },
+        });
+        return rows.map((c) => ({
+            id: c.id,
+            body: c.body,
+            createdAt: c.createdAt,
+            userId: c.userId,
+            user: c.user,
+        }));
+    }
+    async createRecipeComment(recipeId, authorUserId, body) {
+        await this.assertRecipeAccessibleForComments(recipeId, authorUserId);
+        const text = body.trim();
+        if (!text.length) {
+            throw new common_1.BadRequestException('Comment cannot be empty');
+        }
+        return this.prisma.recipeComment.create({
+            data: {
+                recipeId,
+                userId: authorUserId,
+                body: text,
+            },
+            select: {
+                id: true,
+                body: true,
+                createdAt: true,
+                userId: true,
+                user: { select: { name: true, avatarUrl: true } },
+            },
+        });
+    }
+    async deleteRecipeComment(recipeId, commentId, viewerUserId) {
+        const comment = await this.prisma.recipeComment.findFirst({
+            where: { id: commentId, recipeId },
+            include: { recipe: { select: { userId: true } } },
+        });
+        if (!comment) {
+            throw new common_1.NotFoundException('Comment not found');
+        }
+        if (comment.userId !== viewerUserId &&
+            comment.recipe.userId !== viewerUserId) {
+            throw new common_1.ForbiddenException('You cannot delete this comment');
+        }
+        await this.prisma.recipeComment.delete({ where: { id: commentId } });
+        return { deleted: true };
+    }
     findMine(userId) {
         return this.prisma.recipe.findMany({
             where: { userId },
@@ -379,7 +510,7 @@ let RecipesService = RecipesService_1 = class RecipesService {
         const recipe = await this.prisma.recipe.findUnique({
             where: { id },
             include: {
-                user: { select: { name: true, avatarUrl: true } },
+                user: { select: { name: true, avatarUrl: true, isPremium: true } },
                 _count: { select: { recipeLikes: true } },
                 ...(viewerUserId
                     ? {
@@ -418,6 +549,8 @@ let RecipesService = RecipesService_1 = class RecipesService {
             steps: recipe.steps,
             category: recipe.category,
             tags: recipe.tags,
+            diet: recipe.diet,
+            restrictions: recipe.restrictions,
             imageUrl: recipe.imageUrl,
             isAI: recipe.isAI,
             isPublished: recipe.isPublished,
@@ -444,6 +577,8 @@ let RecipesService = RecipesService_1 = class RecipesService {
             steps: r.steps,
             category: r.category,
             tags: r.tags,
+            diet: r.diet,
+            restrictions: r.restrictions,
             imageUrl: r.imageUrl,
             isAI: r.isAI,
             isPublished: r.isPublished,
@@ -460,7 +595,7 @@ let RecipesService = RecipesService_1 = class RecipesService {
                 where,
                 orderBy,
                 include: {
-                    user: { select: { name: true, avatarUrl: true } },
+                    user: { select: { name: true, avatarUrl: true, isPremium: true } },
                     _count: { select: { recipeLikes: true } },
                     recipeLikes: {
                         where: { userId: viewerUserId },
@@ -480,7 +615,7 @@ let RecipesService = RecipesService_1 = class RecipesService {
             where,
             orderBy,
             include: {
-                user: { select: { name: true, avatarUrl: true } },
+                user: { select: { name: true, avatarUrl: true, isPremium: true } },
                 _count: { select: { recipeLikes: true } },
             },
         });
@@ -490,6 +625,8 @@ let RecipesService = RecipesService_1 = class RecipesService {
         const tags = (data.tags ?? [])
             .map((t) => t.trim().toLowerCase())
             .filter(Boolean);
+        const restrictions = this.normalizeRestrictionsList(data.restrictions);
+        const diet = this.normalizeDiet(data.diet);
         return this.prisma.recipe.create({
             data: {
                 title: data.title,
@@ -498,6 +635,8 @@ let RecipesService = RecipesService_1 = class RecipesService {
                 isAI: data.isAI ?? false,
                 category: data.category?.trim() || null,
                 tags,
+                diet,
+                restrictions,
                 userId,
             },
         });
@@ -543,32 +682,45 @@ let RecipesService = RecipesService_1 = class RecipesService {
                 .map((t) => t.trim().toLowerCase())
                 .filter(Boolean);
         }
+        if (dto.diet !== undefined) {
+            data.diet =
+                dto.diet === null || !String(dto.diet).trim()
+                    ? null
+                    : this.normalizeDiet(dto.diet);
+        }
+        if (dto.restrictions !== undefined) {
+            data.restrictions = this.normalizeRestrictionsList(dto.restrictions);
+        }
         if (Object.keys(data).length === 0) {
             throw new common_1.BadRequestException('No changes provided');
         }
         return this.prisma.recipe.update({ where: { id }, data });
     }
     async generateAiRecipe(input, userId) {
-        const aiCount = await this.prisma.recipe.count({
-            where: { userId, isAI: true },
-        });
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user) {
             throw new common_1.NotFoundException('User not found');
         }
-        if (aiCount >= 1 && !user.isPremium) {
+        if (!user.isPremium) {
             throw new common_1.BadRequestException('Upgrade to premium');
         }
         const generated = await this.aiService.generateRecipe({
             ingredients: input.ingredients,
             dishType: input.dishType,
             complexity: input.complexity,
+            diet: this.normalizeDiet(input.diet) ?? undefined,
+            restrictions: this.normalizeRestrictionsList(input.restrictions),
+            avoidIngredients: (input.avoidIngredients ?? [])
+                .map((s) => String(s).trim().toLowerCase())
+                .filter(Boolean),
         });
         const dish = (input.dishType ?? 'general')
             .trim()
             .toLowerCase()
             .replace(/\s+/g, '-');
         const aiTags = [dish, 'ai'].filter(Boolean);
+        const dietStored = this.normalizeDiet(input.diet);
+        const restrictionsStored = this.normalizeRestrictionsList(input.restrictions);
         const recipe = await this.prisma.recipe.create({
             data: {
                 title: generated.title,
@@ -577,6 +729,8 @@ let RecipesService = RecipesService_1 = class RecipesService {
                 isAI: true,
                 category: input.dishType?.trim() || 'AI',
                 tags: aiTags,
+                diet: dietStored,
+                restrictions: restrictionsStored,
                 userId,
             },
         });

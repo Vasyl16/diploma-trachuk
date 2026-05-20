@@ -13,6 +13,7 @@ import {
 import { RecipeAiBadges } from "@/components/recipe/recipe-ai-badges";
 import { RecipeCardMedia } from "@/components/recipe/recipe-media";
 import { cn } from "@/lib/utils";
+import { PremiumBadge } from "@/components/user/premium-badge";
 import type { FeedRecipe } from "@/types/recipe";
 
 function previewIngredients(ingredients: string[]): string {
@@ -72,8 +73,31 @@ export function RecipeFeedCard({
                 {recipe.category}
               </Badge>
             ) : null}
+            {recipe.diet ? (
+              <Badge variant="outline" className="max-w-[8rem] truncate capitalize">
+                {recipe.diet}
+              </Badge>
+            ) : null}
           </div>
         </div>
+        {(recipe.restrictions?.length ?? 0) > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {(recipe.restrictions ?? []).slice(0, 4).map((t) => (
+              <Badge
+                key={t}
+                variant="secondary"
+                className="text-[10px] font-normal leading-tight"
+              >
+                {t}
+              </Badge>
+            ))}
+            {(recipe.restrictions ?? []).length > 4 ? (
+              <span className="text-[10px] text-muted-foreground">
+                +{(recipe.restrictions ?? []).length - 4}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         {(recipe.tags?.length ?? 0) > 0 ? (
           <div className="flex flex-wrap gap-1">
             {(recipe.tags ?? []).slice(0, 6).map((t) => (
@@ -113,6 +137,9 @@ export function RecipeFeedCard({
             </div>
           )}
           <span>{recipe.user.name}</span>
+          {recipe.user.isPremium ? (
+            <PremiumBadge className="text-[10px]" />
+          ) : null}
         </Link>
         <CardDescription className="line-clamp-3">
           {previewIngredients(recipe.ingredients)}
