@@ -3,9 +3,10 @@ FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+# `postinstall` runs `prisma generate` — schema must exist before `npm ci`.
+COPY prisma ./prisma/
 RUN npm ci
 
-COPY prisma ./prisma/
 COPY . .
 RUN npx prisma generate
 RUN npm run build
