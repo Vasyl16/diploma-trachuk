@@ -10,17 +10,23 @@ datasource db {
 }
 
 model User {
-  id          String       @id @default(cuid())
-  clerkId     String       @unique
-  email       String       @unique
-  name        String
-  avatarUrl   String?
-  isPremium   Boolean      @default(false)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  recipes     Recipe[]
-  recipeLikes RecipeLike[]
-  favorites   Favorite[]
+  id                    String               @id @default(cuid())
+  clerkId               String               @unique
+  email                 String               @unique
+  name                  String
+  avatarUrl             String?
+  isPremium             Boolean              @default(false)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  recipes               Recipe[]
+  recipeLikes           RecipeLike[]
+  favorites             Favorite[]
+  conversationsAsFirst  DirectConversation[] @relation("ConversationFirstUser")
+  conversationsAsSecond DirectConversation[] @relation("ConversationSecondUser")
+  sentMessages          DirectMessage[]      @relation("DirectMessageSender")
+  blockedUsers          BlockedUser[]        @relation("BlockedUserBlocker")
+  blockedByUsers        BlockedUser[]        @relation("BlockedUserTarget")
+  recipeComments        RecipeComment[]
 }
 
 model Recipe {
@@ -32,6 +38,10 @@ model Recipe {
   category     String?
   /** Lowercase slug-style labels (e.g. pasta, quick). */
   tags         String[] @default([])
+  /** Optional diet style (e.g. vegan, vegetarian, keto) — normalized lowercase. */
+  diet         String?
+  /** Dietary labels (e.g. gluten-free, nut-free) — normalized lowercase. */
+  restrictions String[] @default([])
   /** AI-generated dish photo (URL), optional. */
   imageUrl     String?
   isAI         Boolean  @default(false)
@@ -42,10 +52,13 @@ model Recipe {
   updatedAt    DateTime   @updatedAt
   recipeLikes  RecipeLike[]
   favorites    Favorite[]
+  comments     RecipeComment[]
+  sharedInMessages DirectMessage[]
 
   @@index([userId])
   @@index([isPublished, createdAt])
   @@index([category])
+  @@index([diet])
 }
 
 model RecipeLike {
@@ -72,4 +85,63 @@ model Favorite {
   @@unique([userId, recipeId])
   @@index([recipeId])
   @@index([userId])
+}
+
+model RecipeComment {
+  id        String   @id @default(cuid())
+  body      String
+  userId    String
+  recipeId  String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@index([recipeId, createdAt])
+  @@index([userId])
+}
+
+model DirectConversation {
+  id           String        @id @default(cuid())
+  firstUserId  String
+  secondUserId String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  lastMessageAt DateTime     @default(now())
+  firstUser    User          @relation("ConversationFirstUser", fields: [firstUserId], references: [id], onDelete: Cascade)
+  secondUser   User          @relation("ConversationSecondUser", fields: [secondUserId], references: [id], onDelete: Cascade)
+  messages     DirectMessage[]
+
+  @@unique([firstUserId, secondUserId])
+  @@index([firstUserId])
+  @@index([secondUserId])
+  @@index([lastMessageAt])
+}
+
+model DirectMessage {
+  id             String             @id @default(cuid())
+  conversationId String
+  senderId       String
+  text           String?
+  recipeId       String?
+  createdAt      DateTime           @default(now())
+  conversation   DirectConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User               @relation("DirectMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipe         Recipe?            @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+  @@index([recipeId])
+}
+
+model BlockedUser {
+  id            String   @id @default(cuid())
+  blockerUserId String
+  blockedUserId String
+  createdAt     DateTime @default(now())
+  blocker       User     @relation("BlockedUserBlocker", fields: [blockerUserId], references: [id], onDelete: Cascade)
+  blocked       User     @relation("BlockedUserTarget", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerUserId, blockedUserId])
+  @@index([blockerUserId])
+  @@index([blockedUserId])
 }

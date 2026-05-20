@@ -7,5 +7,5 @@
     "noEmit": true,
     "strict": true
   },
-  "include": ["seed.ts"]
+  "include": ["seed.ts", "seed-random-comments.ts"]
 }

@@ -6,10 +6,16 @@ import { useEffect, useState } from "react";
 
 import { PageHeader, PageShell } from "@/components/layout";
 import { Input } from "@/components/ui/input";
+import { PremiumBadge } from "@/components/user/premium-badge";
 import { getApiBaseUrl } from "@/lib/api-config";
 import { fetchWithAuth } from "@/lib/api-fetch";
 
-type UserRow = { id: string; name: string; avatarUrl: string | null };
+type UserRow = {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  isPremium: boolean;
+};
 
 export function PeopleSearch() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
@@ -117,7 +123,10 @@ export function PeopleSearch() {
                     {u.name.slice(0, 1).toUpperCase()}
                   </div>
                 )}
-                <span className="font-medium text-foreground">{u.name}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-foreground">{u.name}</span>
+                  {u.isPremium ? <PremiumBadge className="text-[10px]" /> : null}
+                </div>
               </Link>
             </li>
           ))}

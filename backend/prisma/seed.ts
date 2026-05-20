@@ -63,6 +63,8 @@ type RecipeSeed = {
   isAI: boolean;
   category: string;
   tags: string[];
+  diet: string | null;
+  restrictions: string[];
 };
 
 function inferCategory(tags: string[]): string {
@@ -90,6 +92,26 @@ function inferCategory(tags: string[]): string {
   if (lower.some((t) => ['fish', 'seafood'].includes(t))) return 'Seafood';
   const raw = lower[0] ?? 'general';
   return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function inferDietAndRestrictions(tags: string[]): {
+  diet: string | null;
+  restrictions: string[];
+} {
+  const lower = tags.map((x) => x.toLowerCase());
+  if (lower.includes('vegan')) {
+    return {
+      diet: 'vegan',
+      restrictions: ['dairy-free', 'egg-free', 'honey-free'],
+    };
+  }
+  if (lower.includes('vegetarian')) {
+    return { diet: 'vegetarian', restrictions: ['meat-free', 'fish-free'] };
+  }
+  if (lower.includes('dessert') || lower.includes('chocolate')) {
+    return { diet: null, restrictions: ['nut-free'] };
+  }
+  return { diet: null, restrictions: [] };
 }
 
 /** Deterministic pseudo-random 0..max-1 from string (stable across runs). */
@@ -175,6 +197,7 @@ function buildRecipeCatalog(): RecipeSeed[] {
     const tagStr = t.tags.join(', ');
     const tags = t.tags.map((x) => x.toLowerCase());
     const category = inferCategory(t.tags);
+    const { diet, restrictions } = inferDietAndRestrictions(t.tags);
     return {
       title: `[Demo] ${t.title}`,
       ingredients: [
@@ -193,6 +216,8 @@ function buildRecipeCatalog(): RecipeSeed[] {
       isAI: t.ai,
       category,
       tags,
+      diet,
+      restrictions,
     };
   });
 }
@@ -310,6 +335,8 @@ async function main() {
         isPublished: true,
         category: tpl.category,
         tags: tpl.tags,
+        diet: tpl.diet,
+        restrictions: tpl.restrictions,
         userId: author.id,
       },
     });

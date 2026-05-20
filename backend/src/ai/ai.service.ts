@@ -11,6 +11,9 @@ export type GenerateRecipeInput = {
   ingredients?: string[];
   dishType?: string;
   complexity?: string;
+  diet?: string;
+  restrictions?: string[];
+  avoidIngredients?: string[];
 };
 
 export type GeneratedRecipePayload = {
@@ -113,7 +116,33 @@ export class AiService {
       ingredients: input.ingredients ?? [],
       dishType: input.dishType ?? null,
       complexity: input.complexity ?? null,
+      diet: input.diet?.trim() || null,
+      restrictions: input.restrictions?.length ? input.restrictions : [],
+      avoidIngredients: input.avoidIngredients?.length
+        ? input.avoidIngredients
+        : [],
     };
+
+    const dietHints: string[] = [];
+    if (payload.diet) {
+      dietHints.push(
+        `The recipe must suit this diet/style: "${payload.diet}".`,
+      );
+    }
+    if (payload.restrictions.length) {
+      dietHints.push(
+        `Respect these dietary requirements (ingredients and steps must comply): ${JSON.stringify(payload.restrictions)}.`,
+      );
+    }
+    if (payload.avoidIngredients.length) {
+      dietHints.push(
+        `Do NOT use any of these ingredients (or obvious substitutes that violate the spirit, e.g. almond milk if "dairy" is avoided): ${JSON.stringify(payload.avoidIngredients)}.`,
+      );
+    }
+    const dietBlock =
+      dietHints.length > 0
+        ? ` Additional constraints: ${dietHints.join(' ')}`
+        : '';
 
     try {
       const completion = await openai.chat.completions.create({
@@ -135,7 +164,7 @@ export class AiService {
           },
           {
             role: 'user',
-            content: `Generate a recipe. Input (JSON): ${JSON.stringify(payload)}`,
+            content: `Generate a recipe. Input (JSON): ${JSON.stringify(payload)}.${dietBlock}`,
           },
         ],
       });

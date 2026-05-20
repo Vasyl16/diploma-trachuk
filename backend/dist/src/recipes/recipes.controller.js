@@ -28,7 +28,7 @@ let RecipesController = class RecipesController {
     feedFacets() {
         return this.recipesService.getPublishedFeedFacets();
     }
-    feed(user, offsetRaw, limitRaw, q, tag, category, includeIng, excludeIng) {
+    feed(user, offsetRaw, limitRaw, q, tag, category, includeIng, excludeIng, diet, restriction) {
         const offset = Math.max(0, parseInt(offsetRaw ?? '0', 10) || 0);
         const limit = Math.min(50, Math.max(1, parseInt(limitRaw ?? '12', 10) || 12));
         return this.recipesService.findPublishedFeed(user?.id, {
@@ -39,6 +39,8 @@ let RecipesController = class RecipesController {
             category,
             includeIng,
             excludeIng,
+            diet,
+            restriction,
         });
     }
     myRecipes(user) {
@@ -134,8 +136,10 @@ __decorate([
     __param(5, (0, common_1.Query)('category')),
     __param(6, (0, common_1.Query)('includeIng')),
     __param(7, (0, common_1.Query)('excludeIng')),
+    __param(8, (0, common_1.Query)('diet')),
+    __param(9, (0, common_1.Query)('restriction')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String, String, String, String, String, String, String]),
+    __metadata("design:paramtypes", [Object, String, String, String, String, String, String, String, String, String]),
     __metadata("design:returntype", void 0)
 ], RecipesController.prototype, "feed", null);
 __decorate([

@@ -3,13 +3,15 @@
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bookmark, ChefHat, Heart } from "lucide-react";
+import { Bookmark, ChefHat, Heart, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { PageHeader, PageShell } from "@/components/layout";
+import { RecipeCommentsSection } from "@/components/recipe/recipe-comments";
 import { RecipeCookingMode } from "@/components/recipe/recipe-cooking-mode";
 import { RecipeHeroMedia } from "@/components/recipe/recipe-media";
 import { Badge } from "@/components/ui/badge";
+import { PremiumBadge } from "@/components/user/premium-badge";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { parseApiErrorMessage } from "@/lib/api-error";
 import { getApiBaseUrl } from "@/lib/api-config";
@@ -46,6 +48,7 @@ function normalize(raw: unknown): FeedRecipe | null {
         user?.avatarUrl === null || user?.avatarUrl === undefined
           ? null
           : String(user.avatarUrl),
+      isPremium: Boolean(user?.isPremium),
     },
     likesCount: typeof o.likesCount === "number" ? o.likesCount : 0,
     likedByMe: Boolean(o.likedByMe),
@@ -56,6 +59,11 @@ function normalize(raw: unknown): FeedRecipe | null {
         : String(o.category),
     tags: Array.isArray(o.tags)
       ? (o.tags as unknown[]).map((t) => String(t))
+      : [],
+    diet:
+      o.diet === null || o.diet === undefined ? null : String(o.diet),
+    restrictions: Array.isArray(o.restrictions)
+      ? (o.restrictions as unknown[]).map((t) => String(t))
       : [],
   };
 }
@@ -269,6 +277,16 @@ export function RecipeDetail({ recipeId }: { recipeId: string }) {
               {recipe.category ? (
                 <Badge variant="secondary">{recipe.category}</Badge>
               ) : null}
+              {recipe.diet ? (
+                <Badge variant="secondary" className="capitalize">
+                  {recipe.diet}
+                </Badge>
+              ) : null}
+              {(recipe.restrictions ?? []).map((t) => (
+                <Badge key={t} variant="outline" className="font-normal">
+                  {t}
+                </Badge>
+              ))}
               {(recipe.tags ?? []).map((t) => (
                 <Badge key={t} variant="outline" className="font-normal">
                   #{t}
@@ -295,6 +313,9 @@ export function RecipeDetail({ recipeId }: { recipeId: string }) {
                   </div>
                 )}
                 <span className="font-medium">{recipe.user.name}</span>
+                {recipe.user.isPremium ? (
+                  <PremiumBadge className="text-[10px]" />
+                ) : null}
               </Link>
             </div>
           </div>
@@ -305,6 +326,18 @@ export function RecipeDetail({ recipeId }: { recipeId: string }) {
                 className={buttonVariants({ variant: "outline", size: "sm" })}
               >
                 Edit recipe
+              </Link>
+            ) : null}
+            {recipe.isPublished ? (
+              <Link
+                href={isSignedIn ? `/messages?recipe=${recipe.id}` : "/sign-in"}
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "gap-1.5",
+                )}
+              >
+                <Send className="h-4 w-4" />
+                Send recipe
               </Link>
             ) : null}
             <button
@@ -385,6 +418,11 @@ export function RecipeDetail({ recipeId }: { recipeId: string }) {
           )}
         </ol>
       </section>
+
+      <RecipeCommentsSection
+        recipeId={recipe.id}
+        recipeOwnerUserId={recipe.userId}
+      />
 
       <RecipeCookingMode
         open={cookingOpen}

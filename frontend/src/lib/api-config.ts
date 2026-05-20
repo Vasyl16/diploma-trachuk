@@ -1,6 +1,7 @@
 /** Base URL for the Nest API (no trailing slash). */
 export function getApiBaseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:3000"
-  );
+  const raw = (
+    process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/$/, "") ?? ""
+  ).trim();
+  return raw.length > 0 ? raw : "http://localhost:3000";
 }

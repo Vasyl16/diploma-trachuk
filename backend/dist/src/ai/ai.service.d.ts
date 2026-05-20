@@ -3,6 +3,9 @@ export type GenerateRecipeInput = {
     ingredients?: string[];
     dishType?: string;
     complexity?: string;
+    diet?: string;
+    restrictions?: string[];
+    avoidIngredients?: string[];
 };
 export type GeneratedRecipePayload = {
     title: string;

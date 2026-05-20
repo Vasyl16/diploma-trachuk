@@ -2,6 +2,7 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { Sparkles } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
@@ -16,10 +17,13 @@ import { fetchWithAuth } from "@/lib/api-fetch";
 function NewAiRecipeInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { getToken, isLoaded } = useAuth();
+  const { getToken, isLoaded, isSignedIn } = useAuth();
   const [ingredients, setIngredients] = useState("");
   const [dishType, setDishType] = useState("");
   const [complexity, setComplexity] = useState("");
+  const [diet, setDiet] = useState("");
+  const [restrictions, setRestrictions] = useState("");
+  const [avoidIngredients, setAvoidIngredients] = useState("");
   const [generateImage, setGenerateImage] = useState(false);
   const [loading, setLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -27,6 +31,7 @@ function NewAiRecipeInner() {
   const [upgradeMode, setUpgradeMode] = useState(false);
   const [showPremiumSuccess, setShowPremiumSuccess] = useState(false);
   const [showCancelled, setShowCancelled] = useState(false);
+  const [premiumAccessLoaded, setPremiumAccessLoaded] = useState(false);
 
   useEffect(() => {
     const checkout = searchParams.get("checkout");
@@ -39,13 +44,53 @@ function NewAiRecipeInner() {
     }
   }, [searchParams, router]);
 
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      setUpgradeMode(false);
+      setPremiumAccessLoaded(true);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const res = await fetchWithAuth(
+          `${getApiBaseUrl()}/users/me`,
+          { method: "GET" },
+          getToken,
+        );
+        const body = (await res.json().catch(() => null)) as
+          | { isPremium?: boolean }
+          | null;
+        if (res.ok) {
+          setUpgradeMode(!Boolean(body?.isPremium));
+        } else {
+          setUpgradeMode(false);
+        }
+      } catch {
+        setUpgradeMode(false);
+      } finally {
+        setPremiumAccessLoaded(true);
+      }
+    })();
+  }, [getToken, isLoaded, isSignedIn, showPremiumSuccess]);
+
   function handleFieldChange(
-    field: "ingredients" | "dishType" | "complexity",
+    field:
+      | "ingredients"
+      | "dishType"
+      | "complexity"
+      | "diet"
+      | "restrictions"
+      | "avoidIngredients",
     value: string,
   ) {
     if (field === "ingredients") setIngredients(value);
     else if (field === "dishType") setDishType(value);
-    else setComplexity(value);
+    else if (field === "complexity") setComplexity(value);
+    else if (field === "diet") setDiet(value);
+    else if (field === "restrictions") setRestrictions(value);
+    else setAvoidIngredients(value);
   }
 
   async function handleBuyPremium() {
@@ -97,6 +142,14 @@ function NewAiRecipeInner() {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
+    const restrictionList = restrictions
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    const avoidList = avoidIngredients
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
 
     try {
       const res = await fetchWithAuth(
@@ -107,6 +160,9 @@ function NewAiRecipeInner() {
             ingredients: ingredientList.length ? ingredientList : undefined,
             dishType: dishType.trim() || undefined,
             complexity: complexity.trim() || undefined,
+            diet: diet.trim() || undefined,
+            restrictions: restrictionList.length ? restrictionList : undefined,
+            avoidIngredients: avoidList.length ? avoidList : undefined,
             generateImage: generateImage ? true : undefined,
           }),
         },
@@ -180,7 +236,7 @@ function NewAiRecipeInner() {
         <div className="mb-6 rounded-xl border border-border bg-card px-6 py-5 shadow-sm">
           <p className="text-sm font-medium text-foreground">Upgrade to Premium</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Unlock unlimited AI-generated recipes after your first free one.
+            AI recipe generation is available only for premium users.
           </p>
           <Button
             type="button"
@@ -193,15 +249,35 @@ function NewAiRecipeInner() {
         </div>
       ) : null}
 
-      <AiRecipeFormCard
-        values={{ ingredients, dishType, complexity }}
-        onChange={handleFieldChange}
-        generateImage={generateImage}
-        onGenerateImageChange={setGenerateImage}
-        onSubmit={handleSubmit}
-        loading={loading || !isLoaded}
-        error={error}
-      />
+      {!isLoaded || !premiumAccessLoaded ? (
+        <p className="text-sm text-muted-foreground">Checking access…</p>
+      ) : !isSignedIn ? (
+        <div className="rounded-xl border border-dashed border-border bg-muted/30 px-6 py-12 text-center">
+          <p className="text-muted-foreground">
+            Sign in with a premium account to use AI recipe generation.
+          </p>
+          <Link href="/sign-in" className="mt-4 inline-flex">
+            <Button type="button">Sign in</Button>
+          </Link>
+        </div>
+      ) : upgradeMode ? null : (
+        <AiRecipeFormCard
+          values={{
+            ingredients,
+            dishType,
+            complexity,
+            diet,
+            restrictions,
+            avoidIngredients,
+          }}
+          onChange={handleFieldChange}
+          generateImage={generateImage}
+          onGenerateImageChange={setGenerateImage}
+          onSubmit={handleSubmit}
+          loading={loading || !isLoaded}
+          error={error}
+        />
+      )}
     </PageShell>
   );
 }

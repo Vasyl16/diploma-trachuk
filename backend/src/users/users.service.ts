@@ -30,7 +30,7 @@ export class UsersService {
   async findPublicById(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      select: { id: true, name: true, avatarUrl: true },
+      select: { id: true, name: true, avatarUrl: true, isPremium: true },
     });
     if (!user) {
       throw new NotFoundException(`User with id ${id} not found`);
@@ -42,7 +42,14 @@ export class UsersService {
   async searchByName(q: string) {
     const term = q.trim();
     if (term.length < 1) {
-      return { items: [] as { id: string; name: string; avatarUrl: string | null }[] };
+      return {
+        items: [] as {
+          id: string;
+          name: string;
+          avatarUrl: string | null;
+          isPremium: boolean;
+        }[],
+      };
     }
     const items = await this.prisma.user.findMany({
       where: {
@@ -50,7 +57,7 @@ export class UsersService {
       },
       take: 30,
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, avatarUrl: true },
+      select: { id: true, name: true, avatarUrl: true, isPremium: true },
     });
     return { items };
   }

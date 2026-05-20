@@ -78,6 +78,22 @@ function inferCategory(tags) {
     const raw = lower[0] ?? 'general';
     return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
+function inferDietAndRestrictions(tags) {
+    const lower = tags.map((x) => x.toLowerCase());
+    if (lower.includes('vegan')) {
+        return {
+            diet: 'vegan',
+            restrictions: ['dairy-free', 'egg-free', 'honey-free'],
+        };
+    }
+    if (lower.includes('vegetarian')) {
+        return { diet: 'vegetarian', restrictions: ['meat-free', 'fish-free'] };
+    }
+    if (lower.includes('dessert') || lower.includes('chocolate')) {
+        return { diet: null, restrictions: ['nut-free'] };
+    }
+    return { diet: null, restrictions: [] };
+}
 function hashPick(s, max) {
     let h = 0;
     for (let i = 0; i < s.length; i++)
@@ -159,6 +175,7 @@ function buildRecipeCatalog() {
         const tagStr = t.tags.join(', ');
         const tags = t.tags.map((x) => x.toLowerCase());
         const category = inferCategory(t.tags);
+        const { diet, restrictions } = inferDietAndRestrictions(t.tags);
         return {
             title: `[Demo] ${t.title}`,
             ingredients: [
@@ -177,6 +194,8 @@ function buildRecipeCatalog() {
             isAI: t.ai,
             category,
             tags,
+            diet,
+            restrictions,
         };
     });
 }
@@ -269,6 +288,8 @@ async function main() {
                 isPublished: true,
                 category: tpl.category,
                 tags: tpl.tags,
+                diet: tpl.diet,
+                restrictions: tpl.restrictions,
                 userId: author.id,
             },
         });

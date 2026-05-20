@@ -39,6 +39,10 @@ export class RecipesController {
     @Query('includeIng') includeIng?: string,
     /** Comma-separated substrings; recipes containing any term in ingredients are excluded. */
     @Query('excludeIng') excludeIng?: string,
+    /** Diet style (e.g. vegan) — case-insensitive match on stored diet. */
+    @Query('diet') diet?: string,
+    /** Comma-separated; recipe must match every term against its restrictions labels (substring, case-insensitive). */
+    @Query('restriction') restriction?: string,
   ) {
     const offset = Math.max(0, parseInt(offsetRaw ?? '0', 10) || 0);
     const limit = Math.min(50, Math.max(1, parseInt(limitRaw ?? '12', 10) || 12));
@@ -50,6 +54,8 @@ export class RecipesController {
       category,
       includeIng,
       excludeIng,
+      diet,
+      restriction,
     });
   }
 

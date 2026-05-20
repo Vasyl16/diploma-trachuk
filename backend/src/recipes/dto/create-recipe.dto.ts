@@ -37,4 +37,15 @@ export class CreateRecipeDto {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  /** Diet style, e.g. vegan, vegetarian — stored lowercase. */
+  @IsOptional()
+  @IsString()
+  diet?: string;
+
+  /** Dietary labels, e.g. gluten-free, nut-free — stored lowercase. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  restrictions?: string[];
 }

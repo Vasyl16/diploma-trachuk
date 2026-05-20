@@ -13,6 +13,7 @@ const config_1 = require("@nestjs/config");
 const auth_middleware_1 = require("./auth/auth.middleware");
 const app_controller_1 = require("./app.controller");
 const app_service_1 = require("./app.service");
+const messages_module_1 = require("./messages/messages.module");
 const payments_module_1 = require("./payments/payments.module");
 const prisma_module_1 = require("./prisma/prisma.module");
 const recipes_module_1 = require("./recipes/recipes.module");
@@ -34,6 +35,7 @@ exports.AppModule = AppModule = __decorate([
             prisma_module_1.PrismaModule,
             users_module_1.UsersModule,
             recipes_module_1.RecipesModule,
+            messages_module_1.MessagesModule,
             webhooks_module_1.WebhooksModule,
             payments_module_1.PaymentsModule,
         ],

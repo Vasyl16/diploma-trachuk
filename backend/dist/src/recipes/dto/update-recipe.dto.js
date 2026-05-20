@@ -17,6 +17,8 @@ class UpdateRecipeDto {
     steps;
     category;
     tags;
+    diet;
+    restrictions;
 }
 exports.UpdateRecipeDto = UpdateRecipeDto;
 __decorate([
@@ -49,4 +51,16 @@ __decorate([
     (0, class_validator_1.IsString)({ each: true }),
     __metadata("design:type", Array)
 ], UpdateRecipeDto.prototype, "tags", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.ValidateIf)((_, v) => v !== null && v !== undefined),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", Object)
+], UpdateRecipeDto.prototype, "diet", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsString)({ each: true }),
+    __metadata("design:type", Array)
+], UpdateRecipeDto.prototype, "restrictions", void 0);
 //# sourceMappingURL=update-recipe.dto.js.map

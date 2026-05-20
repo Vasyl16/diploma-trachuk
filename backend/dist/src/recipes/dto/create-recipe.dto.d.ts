@@ -5,4 +5,6 @@ export declare class CreateRecipeDto {
     isAI?: boolean;
     category?: string;
     tags?: string[];
+    diet?: string;
+    restrictions?: string[];
 }

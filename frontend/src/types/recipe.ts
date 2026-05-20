@@ -4,6 +4,10 @@ export type Recipe = {
   title: string;
   ingredients: string[];
   steps: string[];
+  category?: string | null;
+  tags?: string[];
+  diet?: string | null;
+  restrictions?: string[];
   /** AI-generated dish photo URL when enabled at generation time. */
   imageUrl?: string | null;
   isAI: boolean;
@@ -21,13 +25,15 @@ export type FeedRecipe = {
   steps: string[];
   category?: string | null;
   tags?: string[];
+  diet?: string | null;
+  restrictions?: string[];
   imageUrl?: string | null;
   isAI: boolean;
   isPublished: boolean;
   userId: string;
   createdAt: string;
   updatedAt: string;
-  user: { name: string; avatarUrl: string | null };
+  user: { name: string; avatarUrl: string | null; isPremium?: boolean };
   likesCount: number;
   likedByMe: boolean;
   /** Bookmark / saved (Instagram-style save), separate from like. */

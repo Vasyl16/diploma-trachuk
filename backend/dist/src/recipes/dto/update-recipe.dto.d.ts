@@ -4,4 +4,6 @@ export declare class UpdateRecipeDto {
     steps?: string[];
     category?: string;
     tags?: string[];
+    diet?: string | null;
+    restrictions?: string[];
 }

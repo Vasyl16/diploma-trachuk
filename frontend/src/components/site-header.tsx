@@ -3,7 +3,7 @@
 import { Show, UserButton, useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, Sparkles } from 'lucide-react';
+import { Menu, Send, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 
 import { MAIN_NAV_ITEMS, MobileNavSheet } from '@/components/mobile-nav-sheet';
@@ -17,7 +17,7 @@ export function SiteHeader() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/80 backdrop-blur-md supports-backdrop-filter:bg-background/60">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-4 sm:px-6">
         <Link
           href="/"
@@ -47,6 +47,18 @@ export function SiteHeader() {
               {item.label}
             </Link>
           ))}
+          <Show when="signed-in">
+            <Link
+              href="/messages"
+              aria-label="Messages"
+              className={cn(
+                buttonVariants({ variant: 'ghost', size: 'icon' }),
+                pathname === '/messages' && 'bg-muted text-foreground',
+              )}
+            >
+              <Send className="size-4" aria-hidden />
+            </Link>
+          </Show>
           <Show when="signed-out">
             <Link
               href="/sign-in"
@@ -75,6 +87,16 @@ export function SiteHeader() {
         {/* Small screens: account + burger */}
         <div className="flex items-center gap-1 md:hidden">
           <Show when="signed-in">
+            <Link
+              href="/messages"
+              aria-label="Messages"
+              className={cn(
+                buttonVariants({ variant: 'ghost', size: 'icon' }),
+                pathname === '/messages' && 'bg-muted text-foreground',
+              )}
+            >
+              <Send className="size-4" aria-hidden />
+            </Link>
             <UserButton
               appearance={{
                 elements: {
@@ -110,7 +132,7 @@ export function SiteHeader() {
                   href="/sign-in"
                   className={cn(
                     buttonVariants({ variant: 'outline', size: 'sm' }),
-                    'flex-1 min-w-[6rem] justify-center',
+                    'min-w-24 flex-1 justify-center',
                   )}
                   onClick={() => setMobileOpen(false)}
                 >
@@ -120,7 +142,7 @@ export function SiteHeader() {
                   href="/sign-up"
                   className={cn(
                     buttonVariants({ size: 'sm' }),
-                    'flex-1 min-w-[6rem] justify-center',
+                    'min-w-24 flex-1 justify-center',
                   )}
                   onClick={() => setMobileOpen(false)}
                 >
